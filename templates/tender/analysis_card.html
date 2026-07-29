@@ -95,10 +95,7 @@
                     {% endif %}
                 </div>
                 {% if cert.detail %}
-                <details style="margin-top: 6px;">
-                    <summary style="cursor: pointer; font-size: 12px; color: var(--text-muted);">查看原文要求</summary>
-                    <p style="margin: 4px 0 0; font-size: 13px; color: var(--text-secondary); line-height: 1.6;">{{ cert.detail }}</p>
-                </details>
+                <p style="margin: 6px 0 0; font-size: 13px; color: var(--text); line-height: 1.7; padding: 8px 10px; background: #fafafa; border-radius: 4px; border-left: 3px solid #e0e0e0;">{{ cert.detail }}</p>
                 {% endif %}
             </div>
             {% endfor %}
@@ -121,7 +118,7 @@
                     {{ '格式自拟' if c.format_required == '否' else '需用指定模板' }}
                 </span>
                 {% endif %}
-                {% if c.detail %}<br><span style="font-size: 12px; color: var(--text-muted);">{{ c.detail }}</span>{% endif %}
+                {% if c.detail %}<p style="margin: 4px 0 0; font-size: 13px; color: var(--text); line-height: 1.7; padding: 6px 10px; background: #fafafa; border-radius: 4px; border-left: 3px solid #e0e0e0;">{{ c.detail }}</p>{% endif %}
             </li>
             {% endfor %}
         </ul>
@@ -337,16 +334,14 @@
         {% if type_notes %}
         <div style="margin-bottom: 16px;">
             <h5 style="font-size: 14px; margin: 0 0 8px; color: var(--text);">{{ type_info.icon }} {{ type_info.label }}（{{ type_notes|length }} 条）</h5>
-            <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6;">
-                {% for note in type_notes %}
-                <li style="margin-bottom: 6px;">
-                    {{ note.text }}
-                    <span class="tag tag-{{ note.priority }}" style="margin-left: 6px; font-size: 11px;">
-                        {{ priority_labels.get(note.priority, note.priority) }}
-                    </span>
-                </li>
-                {% endfor %}
-            </ul>
+            {% for note in type_notes %}
+            <div style="margin-bottom: 10px; padding: 10px 12px; background: #fafafa; border-radius: 6px; border-left: 3px solid #e0e0e0; font-size: 14px; line-height: 1.7;">
+                {{ note.text }}
+                <span class="tag tag-{{ note.priority }}" style="margin-left: 6px; font-size: 11px; vertical-align: middle;">
+                    {{ priority_labels.get(note.priority, note.priority) }}
+                </span>
+            </div>
+            {% endfor %}
         </div>
         {% endif %}
     {% endfor %}
@@ -361,16 +356,14 @@
     {% if other_notes %}
     <div style="margin-bottom: 16px;">
         <h5 style="font-size: 14px; margin: 0 0 8px; color: var(--text);">📌 其他注意事项（{{ other_notes|length }} 条）</h5>
-        <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6;">
-            {% for note in other_notes %}
-            <li style="margin-bottom: 6px;">
-                {{ note.text }}
-                <span class="tag tag-{{ note.priority }}" style="margin-left: 6px; font-size: 11px;">
-                    {{ priority_labels.get(note.priority, note.priority) }}
-                </span>
-            </li>
-            {% endfor %}
-        </ul>
+        {% for note in other_notes %}
+        <div style="margin-bottom: 10px; padding: 10px 12px; background: #fafafa; border-radius: 6px; border-left: 3px solid #e0e0e0; font-size: 14px; line-height: 1.7;">
+            {{ note.text }}
+            <span class="tag tag-{{ note.priority }}" style="margin-left: 6px; font-size: 11px; vertical-align: middle;">
+                {{ priority_labels.get(note.priority, note.priority) }}
+            </span>
+        </div>
+        {% endfor %}
     </div>
     {% endif %}
 
