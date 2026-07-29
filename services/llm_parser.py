@@ -1,20 +1,52 @@
-"""大模型招标文件解析服务 —— 双 Agent 架构
+"""大模型招标文件解析服务 —— 三 Agent 架构
 
-Agent A (评分): 仅看评标办法章节 → 提取 scoring_criteria
-Agent B (资格): 看全文 → 提取 qualification_requirements + important_notes
+Agent C (拆分): 分析全文结构 → 提取招标公告、投标人须知、评标办法章节原文
+Agent A (评分): 仅看评标办法章节 → 提取 scoring_criteria（无评分标准时跳过）
+Agent B (资格): 仅看招标公告+投标人须知 → 提取 qualification_requirements + important_notes
 
-两个 Agent 通过 asyncio.gather 并行调用，结果合并后校验。
+Agent C 先运行做章节拆分，Agent A+B 通过 asyncio.gather 并行调用。
 LLM 为主解析引擎，任一 Agent 失败时该部分回退到规则解析。
 """
 
 import asyncio
 import json
-import re
 import traceback
 from datetime import datetime
 from typing import Optional
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_MAX_CHARS
+
+# ====== Agent C: 章节拆分专用 Prompt ======
+
+SPLIT_PROMPT = """你是招标文件结构分析专家。你只会看到文档开头的目录部分（如有）或正文开头。从目录/开头找出以下三个章节的**确切起始标题文本**（只输出标题，不输出章节内容）。
+
+招标文件通常按此结构组织（章节标题可能是"第X章""X、""X."等格式）：
+1. 招标公告/采购公告
+2. 投标人须知/投标须知（含前附表）
+3. 评标办法/评标办法前附表/评审办法/综合评分
+
+严格返回以下 JSON：
+
+```json
+{
+  "has_announcement": true,
+  "announcement_heading": "正文中招标公告章节的起始标题原文，如'第一章 招标公告'，找不到则为null",
+  "has_instructions": true,
+  "instructions_heading": "正文中投标人须知章节的起始标题原文，如'第二章 投标人须知'，找不到则为null",
+  "has_scoring": true,
+  "scoring_heading": "正文中评标办法章节的起始标题原文，如'三、评标办法（综合评分法）'，找不到则为null"
+}
+```
+
+## 规则
+1. **优先从目录识别**：目录中列出了各章节的完整标题和顺序，直接提取即可，忽略页码和引导符（……）
+2. heading 取目录中的标题原文，一字不差（后续用它在正文中定位切分位置）
+3. 没有目录时，从正文开头逐章扫描标题
+4. 标题格式可能是"第X章 XXX""X、XXX""X. XXX"，也可能是独立加粗行
+5. 注意区分归属：投标人须知中的资格要求属于 instructions；评标办法中的资格评审属于 scoring
+6. 找不到的章节 → has_xxx=false，xxx_heading=null
+7. 缩写识别："投标须知"≈"投标人须知"，"评审办法""综合评分"≈"评标办法"
+"""
 
 # ====== Agent A: 评分标准专用 Prompt ======
 
@@ -73,7 +105,7 @@ SCORING_PROMPT = """你是招标文件"评标办法"章节的解析专家。只�
 
 # ====== Agent B: 资格要求 + 注意事项专用 Prompt ======
 
-QUAL_PROMPT = """你是招标文件"投标人须知"和"招标公告"章节的解析专家。从全文提取资格要求和重要注意事项。
+QUAL_PROMPT = """你是招标文件"招标公告"和"投标人须知"章节的解析专家。只从这两个章节提取信息，不参考其他章节。
 
 **重要：** 文档开头如有"目录"，目录不是正文，不要提取目录内容。
 
@@ -156,69 +188,6 @@ QUAL_PROMPT = """你是招标文件"投标人须知"和"招标公告"章节的�
 - raw_text 不超过 3000 字
 """
 
-# ====== 章节切分 ======
-
-# 评分标准章节的锚定正则（按优先级排列）
-_SCORING_ANCHOR_PATTERNS = [
-    re.compile(r'[一二三四五六七八九十]+、\s*评[标审]'),         # 三、评标办法
-    re.compile(r'第[一二三四五六七八九十\d]+章[^。\n]{0,10}评[标审]'),  # 第三章 评标办法
-    re.compile(r'\d+[\.\、]\s*评[标审]'),                        # 3. 评标办法
-    re.compile(r'评[标审]办法'),                                   # 最宽泛兜底
-]
-
-# 评分章节结束锚定（遇到这些标题说明评分章节已过）
-_SCORING_END_PATTERNS = re.compile(
-    r'(第[一二三四五六七八九十\d]+章|'
-    r'[一二三四五六七八九十]+、)\s*'
-    r'(合同|投标文件格式|附件|工程量|图纸|技术标准|供货要求)'
-)
-
-
-def _split_chapters(full_text: str) -> tuple[str, str]:
-    """切分文档：返回 (scoring_text, qual_text)
-
-    scoring_text: 评分标准相关章节（供 Agent A 聚焦）
-    qual_text:   全文（供 Agent B 提取资格+注意事项，看全文更安全）
-
-    如果切分失败（找不到评分章节），两者都返回全文。
-    """
-    lines = full_text.split('\n')
-
-    # Step 1: 找评分章节起始行
-    anchor_idx = None
-    for i, line in enumerate(lines):
-        for pat in _SCORING_ANCHOR_PATTERNS:
-            if pat.search(line):
-                anchor_idx = i
-                break
-        if anchor_idx is not None:
-            break
-
-    if anchor_idx is None:
-        print("[llm-split] 未找到评分标准章节锚点，两 Agent 均使用全文", flush=True)
-        return full_text, full_text
-
-    # Step 2: 找评分章节结束行
-    scoring_end = len(lines)
-    for i in range(anchor_idx + 1, min(len(lines), anchor_idx + 300)):
-        if _SCORING_END_PATTERNS.search(lines[i]):
-            scoring_end = i
-            break
-
-    # Step 3: 提取评分区（带前后各 3 行的缓冲区）
-    start = max(0, anchor_idx - 3)
-    end = min(len(lines), scoring_end + 3)
-    scoring_text = '\n'.join(lines[start:end])
-
-    print(f"[llm-split] 评分章节定位: 行 {anchor_idx}→{scoring_end} "
-          f"(共{len(lines)}行), 截取{start}→{end}, {len(scoring_text)}字符", flush=True)
-
-    # Agent B 始终看全文（注意事项分布在各处，不全看会漏）
-    # 但如果全文太长，截取到 LLM_MAX_CHARS
-    qual_text = full_text
-
-    return scoring_text, qual_text
-
 
 # ====== LLM 调用工具 ======
 
@@ -235,7 +204,8 @@ def _clean_json(content: str) -> str:
     return content
 
 
-async def _call_llm(client, system_prompt: str, user_message: str, label: str) -> Optional[dict]:
+async def _call_llm(client, system_prompt: str, user_message: str, label: str,
+                    max_tokens: int = 4096) -> Optional[dict]:
     """单次 LLM 调用，返回解析后的 dict 或 None"""
     import openai
 
@@ -250,7 +220,7 @@ async def _call_llm(client, system_prompt: str, user_message: str, label: str) -
             ],
             response_format={"type": "json_object"},
             temperature=0.1,
-            max_tokens=4096,
+            max_tokens=max_tokens,
         )
 
         usage = response.usage
@@ -292,10 +262,110 @@ async def _call_llm(client, system_prompt: str, user_message: str, label: str) -
         return None
 
 
-# ====== 两个 Agent ======
+# ====== 三个 Agent ======
+
+def _find_heading_line(lines: list, heading: str) -> int | None:
+    """在文本行列表中查找标题所在行号（从后往前，避开目录取正文中的标题）
+
+    归一化空白后做包含匹配，从后往前扫优先取正文中的标题。
+    """
+    heading_norm = ' '.join(heading.split())
+    for i in range(len(lines) - 1, -1, -1):
+        line_norm = ' '.join(lines[i].split())
+        if heading_norm in line_norm:
+            return i
+    return None
+
+
+async def _parse_split(client, full_text: str) -> Optional[dict]:
+    """Agent C: 识别章节标题 → Python 代码按标题切分原文
+
+    返回 {has_scoring, scoring_text, has_announcement, announcement_text,
+            has_instructions, instructions_text} 或 None（失败时）
+    """
+    if not full_text:
+        return None
+
+    # Step 1: LLM 识别章节标题（只看文档开头的目录/正文，不扫全文）
+    text = full_text[:8000]
+    user_message = f"## 招标文件开头（目录/正文）\n\n{text}"
+
+    headings_result = await _call_llm(client, SPLIT_PROMPT, user_message, "split", max_tokens=1024)
+    if headings_result is None:
+        return None
+
+    # Step 2: 收集有效标题及其归属类型
+    heading_entries = []
+    for key, stype in [("announcement_heading", "announcement"),
+                        ("instructions_heading", "instructions"),
+                        ("scoring_heading", "scoring")]:
+        heading = (headings_result.get(key, "") or "").strip()
+        if heading and headings_result.get(f"has_{stype}", False):
+            heading_entries.append((heading, stype))
+
+    if not heading_entries:
+        print("[llm-split] Agent C 未返回任何章节标题", flush=True)
+        return None
+
+    # Step 3: 在原文中定位每个标题的行号
+    lines = full_text.split('\n')
+    heading_positions = []  # [(line_idx, heading_text, section_type), ...]
+
+    for heading, stype in heading_entries:
+        line_idx = _find_heading_line(lines, heading)
+        if line_idx is not None:
+            heading_positions.append((line_idx, heading, stype))
+            print(f"[llm-split] 定位 '{heading[:40]}' → 行 {line_idx}", flush=True)
+        else:
+            print(f"[llm-split] ⚠ 未在正文中找到标题: '{heading[:60]}'", flush=True)
+
+    if not heading_positions:
+        print("[llm-split] 所有标题定位失败", flush=True)
+        return None
+
+    # Step 4: 按文档出现顺序排序，以相邻标题为边界切分章节
+    heading_positions.sort(key=lambda x: x[0])
+
+    MAX_SECTION_CHARS = 20000
+    result = {
+        "has_scoring": False, "scoring_text": "",
+        "has_announcement": False, "announcement_text": "",
+        "has_instructions": False, "instructions_text": "",
+    }
+
+    for idx, (line_idx, heading, stype) in enumerate(heading_positions):
+        # 结束于下一个定位到的标题行（或文末）
+        if idx + 1 < len(heading_positions):
+            end_line = heading_positions[idx + 1][0]
+        else:
+            end_line = len(lines)
+
+        section_text = '\n'.join(lines[line_idx:end_line])
+
+        # 截断过长章节（优先保留前部）
+        if len(section_text) > MAX_SECTION_CHARS:
+            section_text = section_text[:MAX_SECTION_CHARS]
+            print(f"[llm-split] 章节 '{heading[:30]}' 过长({len(section_text)}字符)，已截断", flush=True)
+
+        if stype == "announcement":
+            result["has_announcement"] = True
+            result["announcement_text"] = section_text
+        elif stype == "instructions":
+            result["has_instructions"] = True
+            result["instructions_text"] = section_text
+        elif stype == "scoring":
+            result["has_scoring"] = True
+            result["scoring_text"] = section_text
+
+    print(f"[llm-split] 切分完成: 公告={result['has_announcement']}({len(result['announcement_text'])}字符), "
+          f"须知={result['has_instructions']}({len(result['instructions_text'])}字符), "
+          f"评分={result['has_scoring']}({len(result['scoring_text'])}字符)", flush=True)
+
+    return result
+
 
 async def _parse_scoring(client, scoring_text: str, company=None) -> Optional[dict]:
-    """Agent A: 解析评分标准"""
+    """Agent A: 解析评分标准（仅看评标办法章节）"""
     if not scoring_text:
         return None
 
@@ -313,12 +383,12 @@ async def _parse_scoring(client, scoring_text: str, company=None) -> Optional[di
 
 
 async def _parse_qualification(client, qual_text: str, company=None) -> Optional[dict]:
-    """Agent B: 解析资格要求 + 注意事项"""
+    """Agent B: 解析资格要求 + 注意事项（仅看招标公告+投标人须知）"""
     if not qual_text:
         return None
 
     text = qual_text[:LLM_MAX_CHARS]
-    parts = ["## 招标文件正文\n\n", text]
+    parts = ["## 招标公告 + 投标人须知\n\n", text]
 
     if company:
         company_info = _build_qual_company_summary(company)
@@ -570,12 +640,11 @@ def _match_certificates(result: dict, company) -> None:
 # ====== 编排函数（对外入口） ======
 
 async def parse_with_llm(full_text: str, company=None) -> Optional[dict]:
-    """双 Agent 并行解析招标文件
+    """三 Agent 协作解析招标文件
 
-    - Agent A: 聚焦评标办法章节 → scoring_criteria
-    - Agent B: 全文 → qualification_requirements + important_notes
-    - 两个 Agent 通过 asyncio.gather 并行调用
-    - 任一 Agent 失败不阻塞另一个
+    1. Agent C 先运行：分析全文结构，拆分出招标公告、投标人须知、评标办法
+    2. Agent A + Agent B 并行运行（无评分标准时跳过 A）
+    3. 合并结果 + 校验 + 推荐匹配
 
     Returns:
         tender_analysis JSON dict（不含 file_name 等元信息），
@@ -593,22 +662,51 @@ async def parse_with_llm(full_text: str, company=None) -> Optional[dict]:
         timeout=120.0,
     )
 
-    # 切分章节
-    scoring_text, qual_text = _split_chapters(full_text)
+    # ===== Step 1: Agent C 拆分文档 =====
+    print(f"[llm] Agent C 开始拆分文档, model={LLM_MODEL}", flush=True)
+    split_result = await _parse_split(client, full_text)
 
-    # 并行调用两个 Agent
-    print(f"[llm] 启动双 Agent 并行解析, model={LLM_MODEL}", flush=True)
-    scoring_task = _parse_scoring(client, scoring_text, company)
-    qual_task = _parse_qualification(client, qual_text, company)
+    if split_result is None:
+        print("[llm] Agent C 拆分失败，回退：A/B 均使用全文", flush=True)
+        scoring_text = full_text
+        qual_text = full_text
+        has_scoring = True  # 让 Agent A 自己判断
+    else:
+        scoring_text = split_result.get("scoring_text", "") or ""
+        has_scoring = split_result.get("has_scoring", False) and bool(scoring_text)
 
-    scoring_result, qual_result = await asyncio.gather(scoring_task, qual_task)
+        ann_text = split_result.get("announcement_text", "") or ""
+        ins_text = split_result.get("instructions_text", "") or ""
+        qual_text = (ann_text + "\n\n" + ins_text).strip()
 
-    # 检查结果
+        if not qual_text:
+            print("[llm] Agent C 未找到公告/须知章节，回退全文给 Agent B", flush=True)
+            qual_text = full_text[:LLM_MAX_CHARS]
+        else:
+            print(f"[llm] Agent C 拆分完成: 公告{len(ann_text)}字符, "
+                  f"须知{len(ins_text)}字符, 评分{len(scoring_text)}字符", flush=True)
+
+        if not has_scoring:
+            print("[llm] Agent C 未检测到评分标准章节，跳过 Agent A", flush=True)
+
+    # ===== Step 2: Agent A + Agent B 并行 =====
+    scoring_coro = _parse_scoring(client, scoring_text, company) if has_scoring and scoring_text else None
+    qual_coro = _parse_qualification(client, qual_text, company)
+
+    if scoring_coro:
+        print(f"[llm] 启动 Agent A(评分) + Agent B(资格) 并行解析", flush=True)
+        scoring_result, qual_result = await asyncio.gather(scoring_coro, qual_coro)
+    else:
+        print(f"[llm] 仅运行 Agent B(资格)", flush=True)
+        scoring_result = None
+        qual_result = await qual_coro
+
+    # ===== Step 3: 检查结果 =====
     if scoring_result is None and qual_result is None:
-        print("[llm] 两个 Agent 均失败，回退规则解析", flush=True)
+        print("[llm] Agent A 和 B 均失败，回退规则解析", flush=True)
         return None
 
-    # 合并
+    # ===== Step 4: 合并 =====
     merged = {}
     total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
@@ -620,7 +718,7 @@ async def parse_with_llm(full_text: str, company=None) -> Optional[dict]:
                 total_usage[k] += usage.get(k, 0)
         print(f"[llm] Agent A (评分) 成功", flush=True)
     else:
-        print("[llm] Agent A (评分) 失败，评分部分将为空", flush=True)
+        print("[llm] Agent A (评分) 无结果，评分部分将为空", flush=True)
         merged.setdefault("scoring_criteria", {"total_points": 100, "items": [], "raw_text": ""})
 
     if qual_result:
@@ -635,19 +733,16 @@ async def parse_with_llm(full_text: str, company=None) -> Optional[dict]:
         merged.setdefault("qualification_requirements", {})
         merged.setdefault("important_notes", [])
 
-    # 校验修复
+    # ===== Step 5: 校验 + 推荐匹配 =====
     result = _validate_llm_result(merged)
 
-    # 规则引擎匹配推荐
     scoring = result.get("scoring_criteria", {})
     result["recommendations"] = _build_recommendations_from_llm(scoring, company)
 
-    # 证书匹配
     _match_certificates(result, company)
 
-    # 附加合并后的 token 信息
     if total_usage["total_tokens"] > 0:
         result["llm_usage"] = total_usage
 
-    print(f"[llm] 双 Agent 解析完成, 总 tokens={total_usage['total_tokens']}", flush=True)
+    print(f"[llm] 三 Agent 解析完成, 总 tokens={total_usage['total_tokens']}", flush=True)
     return result
