@@ -6,6 +6,8 @@
 {% set ta = notice.tender_analysis %}
 {% set rec = ta.recommendations %}
 {% set scoring_items = ta.scoring_criteria.get("items", []) %}
+{% set tp = ta.scoring_criteria.total_points %}
+{% set sat = ta.scoring_criteria.get("self_assessed_total") or 0 %}
 
 <div class="flex-between mb">
     <a href="/notices/{{ notice.id }}#tender-analysis" class="btn btn-sm">← 返回标讯详情</a>
@@ -28,7 +30,10 @@
         </div>
         <div>
             <span class="text-secondary">评分总分：</span>
-            <strong>{{ ta.scoring_criteria.total_points }} 分</strong>
+            <strong>{{ tp }} 分</strong>
+            {% if sat > 0 %}
+            <span style="font-size: 12px; color: var(--text-muted);">（自评 {{ sat }} 分，{{ (sat / tp * 100) | int }}%）</span>
+            {% endif %}
         </div>
         <div>
             <span class="text-secondary">评分项数：</span>
@@ -37,40 +42,83 @@
     </div>
 </div>
 
-<!-- 评分要求摘要 -->
+<!-- 评分要求摘要 — 含自评得分 -->
 {% if scoring_items %}
 <div class="card">
-    <h4>📊 评分要求</h4>
+    <h4>📊 评分要求与自评得分
+        {% if sat > 0 %}
+        <span style="font-weight: normal; font-size: 13px;">
+            · 自评合计 <strong style="color: var(--primary);">{{ sat }} 分</strong>（{{ (sat / tp * 100) | int }}%）
+        </span>
+        {% endif %}
+    </h4>
     <div class="table-wrap">
         <table style="width: 100%; font-size: 13px;">
             <thead>
                 <tr>
                     <th>评分项</th>
-                    <th style="width: 70px;">类别</th>
+                    <th style="width: 60px;">类别</th>
                     <th style="width: 60px; text-align: right;">满分</th>
-                    <th style="width: 250px;">分值占比</th>
+                    <th style="width: 160px; text-align: center;">自评得分</th>
                 </tr>
             </thead>
             <tbody>
-                {% set total = ta.scoring_criteria.total_points or 1 %}
                 {% for item in scoring_items %}
+                {% set sas = item.get("self_assessed_score", 0) %}
+                {% set max_p = item.max_points %}
+                {% if max_p > 0 %}{% set ratio = (sas / max_p * 100) | int %}{% else %}{% set ratio = 0 %}{% endif %}
                 <tr>
-                    <td>{{ item.label }}</td>
+                    <td>
+                        <strong>{{ item.label }}</strong>
+                        {% if item.scoring_method %}
+                        <br><span style="font-size: 11px; color: var(--text-muted);">{{ item.scoring_method[:120] }}{% if item.scoring_method|length > 120 %}...{% endif %}</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% set cat_map = {'price': '报价', 'technical': '技术', 'performance': '业绩', 'personnel': '人员', 'qualification': '资质'} %}
                         <span class="tag">{{ cat_map.get(item.category, '其他') }}</span>
                     </td>
-                    <td style="text-align: right; font-weight: 600;">{{ item.max_points }}</td>
-                    <td>
-                        <div style="background: #f0f0f0; height: 8px; border-radius: 4px; width: 100%;">
-                            <div style="background: var(--primary); height: 100%; border-radius: 4px;
-                                        width: {{ (item.max_points / total * 100) | int }}%;"></div>
+                    <td style="text-align: right; font-weight: 600;">{{ max_p }}</td>
+                    <td style="text-align: center;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="flex: 1; background: #f0f0f0; height: 20px; border-radius: 4px; overflow: hidden;">
+                                {% if sas > 0 %}
+                                <div style="height: 100%; border-radius: 4px;
+                                            {% if ratio >= 80 %}background: #4caf50;
+                                            {% elif ratio >= 40 %}background: #ff9800;
+                                            {% else %}background: #f44336;{% endif %}
+                                            width: {{ ratio }}%;"></div>
+                                {% endif %}
+                            </div>
+                            <span style="font-weight: 700; font-size: 14px; min-width: 50px;
+                                         {% if ratio >= 80 %}color: #4caf50;
+                                         {% elif ratio >= 40 %}color: #ff9800;
+                                         {% else %}color: #f44336;{% endif %}">
+                                {{ sas }}<span style="font-size: 11px; font-weight: 400;">/{{ max_p }}</span>
+                            </span>
                         </div>
-                        <span style="font-size: 11px; color: var(--text-secondary);">{{ (item.max_points / total * 100) | int }}%</span>
+                        {% set reason = item.get("self_assessed_reason", "") %}
+                        {% if reason %}
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; text-align: left;">{{ reason }}</div>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
+            <tfoot>
+                <tr style="border-top: 2px solid #e0e0e0; background: #fafafa;">
+                    <td colspan="2" style="text-align: right; font-weight: 600;">合计</td>
+                    <td style="text-align: right; font-weight: 600;">{{ tp }}</td>
+                    <td style="text-align: center; font-weight: 700; font-size: 15px;
+                               {% if tp > 0 %}{% set tr = (sat / tp * 100) | int %}{% else %}{% set tr = 0 %}{% endif %}
+                               {% if tr >= 70 %}color: #4caf50;
+                               {% elif tr >= 40 %}color: #ff9800;
+                               {% else %}color: #f44336;{% endif %}">
+                        {{ sat }}
+                        <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/{{ tp }}（{{ tr }}%）</span>
+                    </td>
+                </tr>
+            </tfoot>
         </table>
     </div>
 </div>

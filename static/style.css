@@ -137,6 +137,11 @@ body { background: #f4f7fb; color: #172033; font-family: Manrope, "Noto Sans SC"
 .deadline small { font-size: 12px; }
 .deadline.is-urgent strong, .deadline.is-overdue strong { color: var(--danger); }
 .deadline.is-overdue small { color: var(--danger); font-weight: 600; }
+.deadline-result { width: fit-content; padding: 2px 7px; border-radius: 999px; color: var(--ops-muted); background: #eef2f6; font-weight: 600; }
+.deadline-result--won { color: #187765; background: #e9f6f1; }
+.deadline-result--lost { color: #a45058; background: #faeeee; }
+.deadline-result--rejected { color: #9b6617; background: #fff4df; }
+.deadline-result--cancelled { color: #65778a; background: #edf1f5; }
 .amount { font-weight: 650; white-space: nowrap; }
 .amount small { display: block; color: var(--text-muted); font-weight: 400; }
 .status-stack { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }

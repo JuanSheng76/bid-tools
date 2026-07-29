@@ -293,27 +293,60 @@ python main.py
 
 ### 招标文件解析（已实现 ✅）
 
-> 详见 `PLAN_招标文件解析.md`，以下为摘要。核心实现文件：`services/tender_parser.py`、`routers/tender.py`、`templates/tender/`。
+> 详见 `PLAN_招标文件解析.md`，以下为摘要。核心实现文件：`services/tender_parser.py`（规则引擎）、`services/llm_parser.py`（LLM 引擎）、`routers/tender.py`、`templates/tender/`。
 
 - **触发时机**：决定投标（bid_decision='bid'）后，在标讯详情页上传招标文件
 - **上传方式**：HTMX 驱动网页上传 .docx / .pdf（`hx-post` + `hx-encoding="multipart/form-data"`）
-- **解析方式**：纯规则匹配 — 章节标题关键词定位 + 表格解析 + 正则提取（所有正则在模块级预编译）
+- **解析方式**：**LLM 优先 + 规则 fallback** — 默认使用 DeepSeek 大模型解析，未配置 API key 或 LLM 失败时自动回退到规则解析
+  - LLM 引擎：`services/llm_parser.py`，使用 OpenAI 兼容 API（默认 `deepseek-chat`），一次调用完成全部提取
+  - 规则引擎：`services/tender_parser.py`，章节标题关键词定位 + 表格解析 + 正则提取（所有正则在模块级预编译）
 - **提取内容**：
   - 资格要求（密封/盖章/递交要求、所需证书、承诺函、保证金）
   - 评分标准（各评分项及其分值、业绩/人员/资质要求）
   - 重要注意事项（自动映射到对应任务类型）
-- **推荐引擎**：评分标准 × 公司资料 → 匹配的业绩/人员/资质列表（按匹配度排序）
+- **推荐引擎**：LLM 解析后，推荐匹配仍由规则引擎精确执行（`match_qualifications`/`match_performances`/`match_personnel`），确保数据库索引精确对应
 - **任务同步**：注意事项按 task_type 追加到对应 Task.checklist（去重）
-- **数据存储**：`BidNotice.tender_analysis` JSON 字段
-- **新增文件**：`services/tender_parser.py`、`routers/tender.py`、`templates/tender/`
-- **新增依赖**：`python-docx>=1.1` + `pdfplumber>=0.11`
-- **路由**：`POST /tender/upload/{id}`、`GET /tender/analysis/{id}`、`GET /tender/recommend/{id}`、`POST /tender/enrich-tasks/{id}`
+- **数据存储**：`BidNotice.tender_analysis` JSON 字段，LLM 解析结果含 `parse_version: 2` 和 `parse_engine: "llm"`
+- **新增文件**：`services/tender_parser.py`、`services/llm_parser.py`、`routers/tender.py`、`templates/tender/`
+- **新增依赖**：`python-docx>=1.1` + `pdfplumber>=0.11` + `openai>=1.0`
+- **路由**：`POST /tender/upload/{id}`、`GET /tender/analysis/{id}`、`GET /tender/recommend/{id}`、`POST /tender/enrich-tasks/{id}`、`GET /tender/llm-status`
+
+### LLM 配置
+
+通过环境变量配置（与 `SECRET_KEY` 一致的模式）：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `LLM_API_KEY` | (空) | DeepSeek API Key，为空时使用规则解析 |
+| `LLM_BASE_URL` | `https://api.deepseek.com` | OpenAI 兼容 API 地址 |
+| `LLM_MODEL` | `deepseek-chat` | 模型名称 |
+| `LLM_MAX_CHARS` | `50000` | 文档截断长度（字符），控制成本 |
+
+**获取 DeepSeek API Key**：访问 https://platform.deepseek.com 注册并充值（最低 10 元，解析一份招标文件约 0.02-0.05 元）。
 
 **关键设计决策：**
-- **解析放入线程池**：`parse_tender_docx` / `parse_tender_pdf` 是纯同步函数（CPU 密集型），通过 `asyncio.to_thread()` 放入线程池执行，避免阻塞 FastAPI 事件循环。大型 PDF（100+ 页）可能耗时 30-60 秒，线程化后服务器仍可响应其他请求。
-- **HTMX 文件上传模式**：表单用 `hx-post` + `hx-encoding="multipart/form-data"`，隐藏 `<input type="file">` 通过 `onchange="this.form.requestSubmit()"` 触发提交（因为 `input.click()` 只打开文件选择器，不会触发 submit）。
-- **步骤动画轮转**：前端 overlay 的 3 步进度动画用 `setInterval` 循环轮转（每 3 秒），不提前显示"完成"——因为实际解析进度无法从服务端获取，固定步骤会在等待期间看起来像"卡死"。
-- **HTMX 错误处理**：`htmx:responseError` 事件捕获 500 错误，手动将服务端返回的 HTML 错误卡片写入目标区域（因为 HTMX 默认不 swap 非 2xx 响应）。
+- **LLM + 规则双引擎**：文本提取后先尝试 LLM，失败/未配置时自动回退规则解析，保证可用性
+- **LLM 只做理解，不做匹配**：LLM 负责提取资格要求、评分标准、注意事项，推荐匹配仍由规则引擎精确执行（避免 LLM 编造不存在的数据库记录）
+- **解析放入线程池**：文本提取（`extract_text_from_docx`/`extract_text_from_pdf`）和规则解析通过 `asyncio.to_thread()` 放入线程池执行，LLM 调用为原生异步（`await parse_with_llm()`）
+- **HTMX 文件上传模式**：表单用 `hx-post` + `hx-encoding="multipart/form-data"`，隐藏 `<input type="file">` 通过 `onchange="this.form.requestSubmit()"` 触发提交
+- **步骤动画轮转**：前端 overlay 的 3 步进度动画用 `setInterval` 循环轮转（每 3 秒），不提前显示"完成"
+- **HTMX 错误处理**：`htmx:responseError` 事件捕获 500 错误，手动将服务端返回的 HTML 错误卡片写入目标区域
+
+### LLM System Prompt 设计要点
+
+- **评分标准别名**：明确告知 LLM "评分标准"也称"评标办法""评审办法""综合评分"，可能以段落或表格出现
+- **资格要求不简写**：要求 detail 字段保留原文完整表述（如"住房和城乡建设部颁发的建筑工程施工总承包一级及以上"而非"一级资质"）
+- **注意事项完整**：要求不设数量上限、不遗漏、不截断，保留完整上下文
+- **评分方法完整**：保留原文中关于如何得分的完整描述（如"满足得X分，不满足得0分""每提供1个得X分，最高Y分"）
+- **输出稳定性**：`temperature=0.1` 低温度 + `response_format={"type": "json_object"}`
+- **结果校验**：`_validate_llm_result()` 对所有字段做防御性校验，缺失用空值填充，防止模板崩溃
+
+### analysis_card.html 展示规则
+
+- **资格要求**：证书/承诺函全部展示（无数量截断），悬停显示 detail；原文摘录可展开
+- **评分标准**：表格 + 分值柱状图，每项下方显示 scoring_method + requirements 子列表
+- **注意事项**：全部展示，按 6 个类型分组（盖章签字/格式装订密封/保证金报价/证书业绩/承诺函授权/踏勘答疑澄清），每组有图标+计数
+- **解析信息**：LLM 解析时显示 🤖 模型名 + token 消耗，规则解析时显示"规则解析"
 
 ## 开发注意事项
 
@@ -342,6 +375,7 @@ python main.py
 - Alpine.js 组件通过 `x-data="checklistApp(...)"` 初始化
 - SortableJS 在 `DOMContentLoaded` 和 `htmx:afterSwap` 事件中初始化看板拖拽
 - HTMX 响应通常返回 HTML 片段，直接插入 DOM
+- 标讯列表仅对进行中的项目显示剩余/逾期天数；`completed` 项目在截止日期下显示中标、未中标、废标或流标，结果关系须通过 `selectinload(BidNotice.result)` 预加载
 
 ### 自定义 Jinja2 过滤器
 - `templates_config.py` 中注册了 `notice_color` 过滤器

@@ -27,6 +27,9 @@ from config import BASE_DIR
 
 # ====== 预编译正则（模块级，只编译一次） ======
 
+# 目录条目检测（以 tab + 数字结尾，如 "第三章  评标办法\t27"）
+_RE_TOC_ENTRY = re.compile(r'\t\d+\s*$')
+
 # 评分项分值提取
 _SCORING_PATTERNS = [
     re.compile(r'([^。；\n,，]{2,30}?)[（(]\s*(\d+)\s*分[)）]'),
@@ -162,7 +165,11 @@ def _extract_docx_tables(doc) -> list[list[list[str]]]:
 
 
 def _locate_sections(paragraphs: list[dict]) -> dict:
-    """定位章节边界，返回 {section_key: (start_index, end_index)}"""
+    """定位章节边界，返回 {section_key: (start_index, end_index)}
+
+    处理 TOC 混淆：同一章节标题可能在目录和正文中各出现一次。
+    以最后一次出现为准（正文始终在目录之后）。
+    """
     sections = {}
     current_section = None
     current_start = 0
@@ -175,11 +182,24 @@ def _locate_sections(paragraphs: list[dict]) -> dict:
                 break
 
         if matched:
-            # 保存上一个章节
-            if current_section and current_section not in sections:
-                sections[current_section] = (current_start, i)
-            current_section = matched
-            current_start = i
+            if current_section and current_section != matched:
+                # 遇到不同章节，关闭上一个
+                if current_section not in sections:
+                    sections[current_section] = (current_start, i)
+                current_section = matched
+                current_start = i
+            elif current_section == matched:
+                # 同一章节再次出现（目录 vs 正文），更新到最新位置
+                current_start = i
+            else:  # current_section is None
+                current_section = matched
+                current_start = i
+
+            # 如果该章节之前已关闭，移除旧记录，以最新匹配为准
+            if matched in sections:
+                del sections[matched]
+                current_section = matched
+                current_start = i
 
     # 最后一个章节
     if current_section and current_section not in sections:
@@ -191,6 +211,12 @@ def _locate_sections(paragraphs: list[dict]) -> dict:
 def _is_section_heading(para: dict, keywords: list[str]) -> bool:
     """判断段落是否为指定章节的标题"""
     text = para["text"]
+    # 排除目录条目（以 tab + 页码结尾，如 "第三章  评标办法\t27"）
+    if _RE_TOC_ENTRY.search(text):
+        return False
+    # 排除无格式的括号编号条目（如 "（3）评标办法"），这类通常是目录/列表项
+    if re.match(r'^[（(]\d+[)）]', text) and not (para["is_heading"] or para["bold"]):
+        return False
     # 章节标题通常较短（< 30 字）
     if len(text) > 50:
         return False
@@ -388,13 +414,21 @@ def _parse_scoring_from_text(text: str) -> list[dict]:
 
 
 def _parse_scoring_table_rows(rows: list[list[str]]) -> list[dict]:
-    """从表格行中解析评分项（常见格式：序号|评分项|分值|评分标准）"""
+    """从表格行中解析评分项。
+
+    支持两种常见格式：
+    1. 分离式：序号 | 评分项 | 分值 | 评分标准（label 和分值在不同列）
+    2. 合并式：评审项 | 评分因素 | 评分标准（label 和分值在同一单元格如 "企业实力（5分）"）
+       - 第1列为分类汇总（如 "商务标得分（40分）"）
+       - 第2列为具体评分因素（如 "企业实力（5分）"）← 优先取这一列
+    """
     items = []
     for row in rows:
         if len(row) < 2:
             continue
-        # 跳过表头
-        if any(h in "".join(row) for h in ["序号", "评分项", "项目", "类别"]):
+        # 跳过表头（仅在短单元格中检测，避免长文本误匹配）
+        if any(h in cell for cell in row for h in ["序号", "评审项", "评分项", "类别", "评审因素"]
+               if len(cell.strip()) <= 15):
             continue
 
         # 在整行中找分值
@@ -404,13 +438,41 @@ def _parse_scoring_table_rows(rows: list[list[str]]) -> list[dict]:
             continue
 
         points = int(points_match.group(1))
-        # 找最像评分项名称的单元格（排除数字、纯分值）
         label = ""
-        for cell in row:
-            cell = cell.strip()
-            if len(cell) >= 2 and not re.match(r'^[\d.\s]+$', cell) and "分" not in cell:
-                label = cell
-                break
+
+        # 辅助函数：从单元格中提取标签和分值
+        def _extract_from_cell(cell_text: str):
+            """返回 (label, points) 或 (None, None)"""
+            cell_text = cell_text.strip()
+            # 格式: "标签\n（N分）" 或 "标签（N分）"（支持标签内含换行）
+            m = re.match(r'^(.+?)[\s\n]*[（(]\s*(\d+)\s*分[)）]', cell_text, re.DOTALL)
+            if m:
+                label = m.group(1).strip()
+                label = re.sub(r'[\s\n]+', '', label)  # 移除标签内换行/空白
+                return label, int(m.group(2))
+            # 格式: 纯文本标签（不含分值），长度合理
+            if (len(cell_text) >= 2 and len(cell_text) <= 30
+                    and not re.match(r'^[\d.\s]+$', cell_text)
+                    and '分' not in cell_text):
+                return cell_text, points
+            return None, None
+
+        # 优先取 col1（具体评分因素），再取 col0（分类汇总）
+        for col_idx in [1, 0]:
+            if col_idx < len(row):
+                l, p = _extract_from_cell(row[col_idx])
+                if l:
+                    label = l
+                    points = p
+                    break
+
+        # Fallback: 找任意不含"分"的单元格
+        if not label:
+            for cell in row:
+                cell = cell.strip()
+                if len(cell) >= 2 and not re.match(r'^[\d.\s]+$', cell) and "分" not in cell:
+                    label = cell
+                    break
 
         if label and points:
             items.append({
@@ -695,7 +757,43 @@ async def enrich_task_checklists(notice_id: str, db: AsyncSession, important_not
     return added_count
 
 
+# ====== 文本提取（供 LLM 使用） ======
+
+
+def extract_text_from_docx(file_path: str) -> str:
+    """从 .docx 文件提取纯文本（供 LLM 解析使用）"""
+    from docx import Document as DocxDocument
+
+    doc = DocxDocument(file_path)
+    lines = []
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if text:
+            lines.append(text)
+    return "\n".join(lines)
+
+
+def extract_text_from_pdf(file_path: str) -> str:
+    """从 .pdf 文件提取纯文本（供 LLM 解析使用）"""
+    import pdfplumber
+
+    lines = []
+    with pdfplumber.open(file_path) as pdf:
+        for page in pdf.pages:
+            try:
+                text = page.extract_text()
+                if text:
+                    for line in text.split("\n"):
+                        line = line.strip()
+                        if line:
+                            lines.append(line)
+            except Exception:
+                pass
+    return "\n".join(lines)
+
+
 # ====== 主入口 ======
+
 
 def parse_tender_docx(file_path: str, original_filename: str, company=None) -> dict:
     """解析 .docx 招标文件，返回完整 tender_analysis dict"""

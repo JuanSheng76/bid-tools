@@ -78,6 +78,7 @@
             <tbody>
             {% for n in notices %}
                 {% set days = (n.bid_deadline - now).days if n.bid_deadline else none %}
+                {% set tracks_deadline = n.status not in ['completed', 'ignored'] %}
                 <tr>
                     <td>
                         <a class="notice-title" href="/notices/{{ n.id }}">{{ n.title }}</a>
@@ -89,9 +90,23 @@
                     </td>
                     <td>
                         {% if n.bid_deadline %}
-                        <div class="deadline {{ 'is-overdue' if days < 0 else ('is-urgent' if days < 7 else '') }}">
+                        <div class="deadline {{ 'is-overdue' if tracks_deadline and days < 0 else ('is-urgent' if tracks_deadline and days < 7 else '') }}">
                             <strong>{{ n.bid_deadline.strftime('%Y-%m-%d %H:%M') }}</strong>
+                            {% if n.status == 'completed' %}
+                                {% if n.result and n.result.result == 'won' %}
+                                <small class="deadline-result deadline-result--won">中标</small>
+                                {% elif n.result and n.result.result == 'lost' %}
+                                <small class="deadline-result deadline-result--lost">未中标</small>
+                                {% elif n.result and n.result.result == 'rejected' %}
+                                <small class="deadline-result deadline-result--rejected">废标</small>
+                                {% elif n.result and n.result.result == 'cancelled' %}
+                                <small class="deadline-result deadline-result--cancelled">流标</small>
+                                {% else %}
+                                <small class="deadline-result">结果待录入</small>
+                                {% endif %}
+                            {% else %}
                             <small>{% if days < 0 %}已逾期 {{ -days }} 天{% elif days == 0 %}今天截止{% else %}剩余 {{ days }} 天{% endif %}</small>
+                            {% endif %}
                         </div>
                         {% else %}<span class="text-muted">未设置</span>{% endif %}
                     </td>

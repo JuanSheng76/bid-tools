@@ -48,5 +48,6 @@ echo   浏览器打开: http://127.0.0.1:8000
 echo   按 Ctrl+C 停止
 echo ========================================
 echo.
+set LLM_API_KEY=sk-2816ec8cf2ef457183d055e2323e5420
 %PYTHON% main.py
 pause

@@ -7,12 +7,12 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Request, Form, Depends, File, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import BASE_DIR
+from config import BASE_DIR, LLM_API_KEY, LLM_MODEL
 from database import get_db
 from models import BidNotice, Company
 from auth import get_session
@@ -20,8 +20,11 @@ from templates_config import templates
 from services.tender_parser import (
     parse_tender_docx,
     parse_tender_pdf,
+    extract_text_from_docx,
+    extract_text_from_pdf,
     enrich_task_checklists,
 )
+from services.llm_parser import parse_with_llm
 
 router = APIRouter(prefix="/tender", tags=["tender"])
 
@@ -73,34 +76,73 @@ async def tender_upload(
     # 获取公司资料（用于匹配推荐）
     company = (await db.execute(select(Company).limit(1))).scalar_one_or_none()
 
-    # 根据扩展名调用解析（放入线程池避免阻塞事件循环）
     print(f"[tender] 开始解析: {tender_file.filename} ({os.path.getsize(file_path)} bytes)", flush=True)
     t0 = time.time()
+    result = None
+    parse_engine = "rule"  # 默认规则解析
+
+    # 1. 提取文档纯文本（供 LLM 使用）
+    full_text = ""
     try:
         if ext.lower() == ".docx":
-            result = await asyncio.to_thread(
-                parse_tender_docx, file_path, tender_file.filename, company
-            )
+            full_text = await asyncio.to_thread(extract_text_from_docx, file_path)
         else:
-            result = await asyncio.to_thread(
-                parse_tender_pdf, file_path, tender_file.filename, company
-            )
-        elapsed = time.time() - t0
-        print(f"[tender] 解析完成: {tender_file.filename} 耗时 {elapsed:.1f}s", flush=True)
+            full_text = await asyncio.to_thread(extract_text_from_pdf, file_path)
+        print(f"[tender] 文本提取完成, 字符数={len(full_text)}", flush=True)
     except Exception as e:
-        elapsed = time.time() - t0
-        print(f"[tender] 解析失败: {tender_file.filename} 耗时 {elapsed:.1f}s", flush=True)
+        print(f"[tender] 文本提取失败: {e}", flush=True)
         traceback.print_exc()
-        tb = traceback.format_exc()
-        return HTMLResponse(
-            f'<div class="card" style="border-left:4px solid var(--danger);margin:0;">'
-            f'<h4>❌ 解析失败</h4>'
-            f'<p><strong>错误类型：</strong>{type(e).__name__}</p>'
-            f'<p><strong>错误信息：</strong>{e}</p>'
-            f'<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">完整 Traceback</summary>'
-            f'<pre style="font-size:11px;max-height:300px;overflow:auto;background:#1e1e1e;color:#d4d4d4;padding:10px;border-radius:6px;margin-top:6px;">{tb}</pre>'
-            f'</details></div>',
-            status_code=500)
+        # 文本提取失败，继续尝试规则解析（规则解析内部有自己的提取逻辑）
+
+    # 2. 尝试 LLM 解析（如果已配置且有文本）
+    if LLM_API_KEY and full_text:
+        try:
+            llm_result = await parse_with_llm(full_text, company)
+            if llm_result:
+                # 补充文件元信息
+                llm_result["file_name"] = tender_file.filename
+                llm_result["file_stored_at"] = file_path
+                llm_result["parsed_at"] = datetime.utcnow().isoformat()
+                llm_result["parse_version"] = 2
+                llm_result["parse_engine"] = "llm"
+                llm_result["llm_model"] = LLM_MODEL
+                result = llm_result
+                parse_engine = "llm"
+                print(f"[tender] LLM 解析成功", flush=True)
+        except Exception as e:
+            print(f"[tender] LLM 解析异常，回退到规则解析: {e}", flush=True)
+            traceback.print_exc()
+
+    # 3. 规则解析 fallback
+    if result is None:
+        try:
+            if ext.lower() == ".docx":
+                result = await asyncio.to_thread(
+                    parse_tender_docx, file_path, tender_file.filename, company
+                )
+            else:
+                result = await asyncio.to_thread(
+                    parse_tender_pdf, file_path, tender_file.filename, company
+                )
+            result["parse_engine"] = "rule"
+            print(f"[tender] 规则解析完成", flush=True)
+        except Exception as e:
+            elapsed = time.time() - t0
+            print(f"[tender] 规则解析失败: {tender_file.filename} 耗时 {elapsed:.1f}s", flush=True)
+            traceback.print_exc()
+            tb = traceback.format_exc()
+            return HTMLResponse(
+                f'<div class="card" style="border-left:4px solid var(--danger);margin:0;">'
+                f'<h4>❌ 解析失败</h4>'
+                f'<p><strong>错误类型：</strong>{type(e).__name__}</p>'
+                f'<p><strong>错误信息：</strong>{e}</p>'
+                f'<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">完整 Traceback</summary>'
+                f'<pre style="font-size:11px;max-height:300px;overflow:auto;background:#1e1e1e;color:#d4d4d4;padding:10px;border-radius:6px;margin-top:6px;">{tb}</pre>'
+                f'</details></div>',
+                status_code=500)
+
+    elapsed = time.time() - t0
+    print(f"[tender] 解析完成: {tender_file.filename} 引擎={parse_engine} 耗时 {elapsed:.1f}s", flush=True)
 
     # 写入 notice
     notice.tender_analysis = result
@@ -222,3 +264,15 @@ async def tender_enrich_tasks(
             await db.refresh(notice)
 
     return RedirectResponse(url=f"/notices/{notice_id}#tender-analysis", status_code=303)
+
+
+@router.get("/llm-status")
+async def tender_llm_status(request: Request):
+    """返回 LLM 配置状态（前端可用于显示当前解析模式）"""
+    session = get_session(request)
+    if not session:
+        return JSONResponse({"configured": False, "error": "未登录"})
+    return JSONResponse({
+        "configured": bool(LLM_API_KEY),
+        "model": LLM_MODEL if LLM_API_KEY else None,
+    })

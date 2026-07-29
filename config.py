@@ -36,3 +36,11 @@ ASSESSMENT_WEIGHTS = {
 # 推荐阈值
 RECOMMEND_THRESHOLD_HIGH = 70
 RECOMMEND_THRESHOLD_LOW = 40
+
+# LLM 配置（可选，不配置则使用规则解析）
+# 默认使用 DeepSeek，可通过环境变量覆盖
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "sk-2816ec8cf2ef457183d055e2323e5420")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
+# 文档截断长度（字符），控制 LLM 调用成本
+LLM_MAX_CHARS = int(os.environ.get("LLM_MAX_CHARS", "50000"))

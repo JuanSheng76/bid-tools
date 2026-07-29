@@ -42,7 +42,10 @@ async def notice_list(
     if not session:
         return RedirectResponse(url="/login")
 
-    query = select(BidNotice).options(selectinload(BidNotice.source))
+    query = select(BidNotice).options(
+        selectinload(BidNotice.source),
+        selectinload(BidNotice.result),
+    )
     count_query = select(func.count(BidNotice.id))
 
     if status:

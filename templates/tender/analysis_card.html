@@ -11,7 +11,7 @@
 
 <!-- 资格要求 -->
 <div class="card" style="border-left: 4px solid var(--primary);">
-    <h4>📋 资格要求摘要</h4>
+    <h4>📋 资格要求</h4>
 
     <!-- 密封/盖章/递交 -->
     <div class="grid-3" style="margin-bottom: 16px;">
@@ -28,7 +28,7 @@
             <strong style="font-size: 13px; color: var(--text-secondary);">盖章要求</strong>
             <p style="margin: 4px 0 0; font-size: 14px;">
                 {% if ta.qualification_requirements.stamping.requirements %}
-                    {{ ta.qualification_requirements.stamping.requirements | join('、') }}
+                    {{ ta.qualification_requirements.stamping.requirements | join('；') }}
                 {% else %}
                     未特别说明
                 {% endif %}
@@ -42,7 +42,7 @@
                 <br>截止：{{ ta.qualification_requirements.submission.deadline }}
                 {% endif %}
                 {% if ta.qualification_requirements.submission.location %}
-                <br>地点：{{ ta.qualification_requirements.submission.location[:30] }}
+                <br>地点：{{ ta.qualification_requirements.submission.location }}
                 {% endif %}
             </p>
         </div>
@@ -50,50 +50,116 @@
 
     <!-- 保证金 -->
     {% set fin = ta.qualification_requirements.financial_requirements %}
-    {% if fin.bid_bond or fin.bid_bond_form %}
+    {% if fin.bid_bond or fin.bid_bond_form or fin.performance_bond %}
     <div style="margin-bottom: 16px;">
         <strong style="font-size: 13px; color: var(--text-secondary);">保证金</strong>
         <p style="margin: 4px 0 0; font-size: 14px;">
             {% if fin.bid_bond %}投标保证金：{{ '%.1f'|format(fin.bid_bond) }} 万元{% endif %}
             {% if fin.bid_bond_form %}（{{ fin.bid_bond_form }}）{% endif %}
             {% if fin.performance_bond %}<br>履约保证金：{{ '%.1f'|format(fin.performance_bond) }} 万元{% endif %}
+            {% if fin.other %}<br><span style="font-size: 12px; color: var(--text-muted);">{{ fin.other }}</span>{% endif %}
         </p>
     </div>
     {% endif %}
 
-    <!-- 所需证书 -->
+    <!-- 所需证书 — 详情卡片展示 -->
     {% set certs = ta.qualification_requirements.required_certificates %}
     {% if certs %}
     <div style="margin-bottom: 16px;">
-        <strong style="font-size: 13px; color: var(--text-secondary);">所需证书</strong>
-        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
-            {% for cert in certs[:12] %}
-            <span style="padding: 3px 10px; border-radius: 999px; font-size: 12px;
-                         {{ 'background: var(--success-light); color: var(--success);' if cert.matched else 'background: var(--danger-light); color: var(--danger);' }}">
-                {{ '✓' if cert.matched else '✗' }} {{ cert.name }}
-            </span>
+        <strong style="font-size: 13px; color: var(--text-secondary);">所需证书（{{ certs|length }} 项）</strong>
+        <div style="margin-top: 8px;">
+            {% for cert in certs %}
+            <div style="margin-bottom: 10px; padding: 10px 12px; border-radius: 8px;
+                        {{ 'background: #f0faf0; border: 1px solid #c8e6c9;' if cert.matched else 'background: #fef5f5; border: 1px solid #ffcdd2;' }}">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <span style="font-weight: 600; font-size: 14px;
+                                 {{ 'color: var(--success);' if cert.matched else 'color: var(--danger);' }}">
+                        {{ '✓ 已具备' if cert.matched else '✗ 缺失' }} {{ cert.name }}
+                    </span>
+                    {% if cert.type and cert.type != 'basic' %}
+                    <span style="font-size: 11px; padding: 1px 6px; border-radius: 999px; background: #e8eaf6; color: #5c6bc0;">{{ cert.type }}</span>
+                    {% endif %}
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px;">
+                    {% if cert.level %}
+                    <span style="padding: 2px 8px; border-radius: 999px; background: #e3f2fd; color: #1565c0;" title="等级要求">📊 {{ cert.level }}</span>
+                    {% endif %}
+                    {% if cert.issuing_authority %}
+                    <span style="padding: 2px 8px; border-radius: 999px; background: #f3e5f5; color: #7b1fa2;" title="颁发机构">🏛 {{ cert.issuing_authority }}</span>
+                    {% endif %}
+                    {% if cert.time_range %}
+                    <span style="padding: 2px 8px; border-radius: 999px; background: #fff3e0; color: #e65100;" title="时效要求">⏱ {{ cert.time_range }}</span>
+                    {% endif %}
+                    {% if cert.quantity %}
+                    <span style="padding: 2px 8px; border-radius: 999px; background: #e8f5e9; color: #2e7d32;" title="数量要求">📦 {{ cert.quantity }}</span>
+                    {% endif %}
+                </div>
+                {% if cert.detail %}
+                <details style="margin-top: 6px;">
+                    <summary style="cursor: pointer; font-size: 12px; color: var(--text-muted);">查看原文要求</summary>
+                    <p style="margin: 4px 0 0; font-size: 13px; color: var(--text-secondary); line-height: 1.6;">{{ cert.detail }}</p>
+                </details>
+                {% endif %}
+            </div>
             {% endfor %}
         </div>
     </div>
     {% endif %}
 
-    <!-- 所需承诺函 -->
+    <!-- 所需承诺函 — 含格式要求 -->
     {% set commitments = ta.qualification_requirements.required_commitments %}
     {% if commitments %}
-    <div>
-        <strong style="font-size: 13px; color: var(--text-secondary);">所需承诺函/声明</strong>
+    <div style="margin-bottom: 16px;">
+        <strong style="font-size: 13px; color: var(--text-secondary);">所需承诺函/声明（{{ commitments|length }} 项）</strong>
         <ul style="margin: 6px 0 0; padding-left: 20px; font-size: 14px;">
-            {% for c in commitments[:10] %}
-            <li>{{ c.name }}</li>
+            {% for c in commitments %}
+            <li style="margin-bottom: 4px;">
+                <strong>{{ c.name }}</strong>
+                {% if c.format_required and c.format_required != '未说明' %}
+                <span style="font-size: 11px; padding: 1px 6px; border-radius: 999px;
+                             {{ 'background: #e8f5e9; color: #2e7d32;' if c.format_required == '否' else 'background: #fff3e0; color: #e65100;' }}">
+                    {{ '格式自拟' if c.format_required == '否' else '需用指定模板' }}
+                </span>
+                {% endif %}
+                {% if c.detail %}<br><span style="font-size: 12px; color: var(--text-muted);">{{ c.detail }}</span>{% endif %}
+            </li>
             {% endfor %}
         </ul>
     </div>
     {% endif %}
+
+    <!-- 原文摘录 -->
+    {% set seal_text = ta.qualification_requirements.sealing.requirements_text %}
+    {% set stamp_text = ta.qualification_requirements.stamping.requirements_text %}
+    {% set subm_text = ta.qualification_requirements.submission.requirements_text %}
+    {% if seal_text or stamp_text or subm_text %}
+    <details style="margin-top: 8px;">
+        <summary style="cursor: pointer; font-size: 12px; color: var(--text-muted);">查看原文摘录</summary>
+        <div style="font-size: 13px; color: var(--text-secondary); margin-top: 8px; padding: 10px; background: #f8f9fa; border-radius: 6px; max-height: 300px; overflow-y: auto; line-height: 1.7; white-space: pre-wrap;">
+            {% if seal_text %}<strong>密封要求：</strong>{{ seal_text }}
+
+            {% endif %}
+            {% if stamp_text %}<strong>盖章要求：</strong>{{ stamp_text }}
+
+            {% endif %}
+            {% if subm_text %}<strong>递交要求：</strong>{{ subm_text }}{% endif %}
+        </div>
+    </details>
+    {% endif %}
 </div>
 
-<!-- 评分标准 -->
+<!-- 评分标准 — 含自评得分 -->
 <div class="card" style="border-left: 4px solid var(--warning);">
-    <h4>📊 评分标准 <span style="font-weight: normal; font-size: 13px; color: var(--text-secondary);">（总分 {{ ta.scoring_criteria.total_points }} 分）</span></h4>
+    <h4>📊 评分标准（评标办法）
+        <span style="font-weight: normal; font-size: 13px; color: var(--text-secondary);">
+            （满分 {{ ta.scoring_criteria.total_points }} 分）
+            {% set sat = ta.scoring_criteria.get("self_assessed_total") %}
+            {% if sat is not none and sat > 0 %}
+            · <span style="font-weight: 600; color: var(--primary);">自评合计 {{ sat }} 分</span>
+            <span style="color: var(--text-muted);">（{{ (sat / ta.scoring_criteria.total_points * 100) | int }}%）</span>
+            {% endif %}
+        </span>
+    </h4>
 
     {% set scoring_items = ta.scoring_criteria.get("items", []) %}
     {% if scoring_items %}
@@ -102,34 +168,96 @@
             <thead>
                 <tr>
                     <th>评分项</th>
-                    <th style="width: 70px;">类别</th>
+                    <th style="width: 60px;">类别</th>
                     <th style="width: 60px; text-align: right;">满分</th>
-                    <th style="width: 200px;">分值可视化</th>
+                    <th style="width: 160px; text-align: center;">自评得分</th>
                 </tr>
             </thead>
             <tbody>
-                {% set max_points = scoring_items | map(attribute='max_points') | max or 1 %}
-                {% for item in scoring_items[:15] %}
+                {% for item in scoring_items %}
+                {% set sas = item.get("self_assessed_score", 0) %}
+                {% set max_p = item.max_points %}
+                {% if max_p > 0 %}
+                    {% set ratio = (sas / max_p * 100) | int %}
+                {% else %}
+                    {% set ratio = 0 %}
+                {% endif %}
                 <tr>
-                    <td>{{ item.label }}</td>
+                    <td>
+                        <strong>{{ item.label }}</strong>
+                        {% if item.scoring_method %}
+                        <br><span style="font-size: 11px; color: var(--text-muted);">{{ item.scoring_method[:120] }}{% if item.scoring_method|length > 120 %}...{% endif %}</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% set cat_map = {'price': '报价', 'technical': '技术', 'performance': '业绩', 'personnel': '人员', 'qualification': '资质'} %}
                         <span class="tag">{{ cat_map.get(item.category, '其他') }}</span>
                     </td>
-                    <td style="text-align: right; font-weight: 600;">{{ item.max_points }}</td>
-                    <td>
-                        <div style="background: #f0f0f0; height: 8px; border-radius: 4px; width: 100%;">
-                            <div style="background: var(--primary); height: 100%; border-radius: 4px;
-                                        width: {{ (item.max_points / max_points * 100) | int }}%;"></div>
+                    <td style="text-align: right; font-weight: 600;">{{ max_p }}</td>
+                    <td style="text-align: center;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="flex: 1; background: #f0f0f0; height: 20px; border-radius: 4px; overflow: hidden; position: relative;">
+                                {% if sas > 0 %}
+                                <div style="height: 100%; border-radius: 4px; transition: width 0.3s;
+                                            {% if ratio >= 80 %}background: #4caf50;
+                                            {% elif ratio >= 40 %}background: #ff9800;
+                                            {% else %}background: #f44336;{% endif %}
+                                            width: {{ ratio }}%;"></div>
+                                {% endif %}
+                            </div>
+                            <span style="font-weight: 700; font-size: 14px; min-width: 50px;
+                                         {% if ratio >= 80 %}color: #4caf50;
+                                         {% elif ratio >= 40 %}color: #ff9800;
+                                         {% else %}color: #f44336;{% endif %}">
+                                {{ sas }}<span style="font-size: 11px; font-weight: 400;">/{{ max_p }}</span>
+                            </span>
                         </div>
+                        {% set reason = item.get("self_assessed_reason", "") %}
+                        {% if reason %}
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; text-align: left;">{{ reason }}</div>
+                        {% endif %}
                     </td>
                 </tr>
+                {% if item.requirements %}
+                <tr>
+                    <td colspan="4" style="padding-top: 0; font-size: 12px; color: var(--text-secondary);">
+                        <ul style="margin: 0; padding-left: 16px;">
+                            {% for req in item.requirements %}
+                            <li>{{ req }}</li>
+                            {% endfor %}
+                        </ul>
+                    </td>
+                </tr>
+                {% endif %}
                 {% endfor %}
             </tbody>
+            <tfoot>
+                <tr style="border-top: 2px solid #e0e0e0; background: #fafafa;">
+                    <td colspan="2" style="text-align: right; font-weight: 600;">合计</td>
+                    <td style="text-align: right; font-weight: 600;">{{ ta.scoring_criteria.total_points }}</td>
+                    <td style="text-align: center; font-weight: 700; font-size: 15px;
+                               {% set sat = ta.scoring_criteria.get("self_assessed_total") or 0 %}
+                               {% set tp = ta.scoring_criteria.total_points %}
+                               {% if tp > 0 %}{% set tr = (sat / tp * 100) | int %}{% else %}{% set tr = 0 %}{% endif %}
+                               {% if tr >= 70 %}color: #4caf50;
+                               {% elif tr >= 40 %}color: #ff9800;
+                               {% else %}color: #f44336;{% endif %}">
+                        {{ sat }}
+                        <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/{{ tp }}（{{ tr }}%）</span>
+                    </td>
+                </tr>
+            </tfoot>
         </table>
     </div>
     {% else %}
-    <p class="text-muted">未能从招标文件中解析出明确的评分标准表格</p>
+    <p class="text-muted">未能从招标文件中解析出明确的评分标准</p>
+    {% endif %}
+
+    {% if ta.scoring_criteria.raw_text %}
+    <details style="margin-top: 8px;">
+        <summary style="cursor: pointer; font-size: 12px; color: var(--text-muted);">查看原文</summary>
+        <div style="font-size: 13px; color: var(--text-secondary); margin-top: 8px; padding: 10px; background: #f8f9fa; border-radius: 6px; max-height: 300px; overflow-y: auto; line-height: 1.7; white-space: pre-wrap;">{{ ta.scoring_criteria.raw_text }}</div>
+    </details>
     {% endif %}
 </div>
 
@@ -188,26 +316,66 @@
 </div>
 {% endif %}
 
-<!-- 重要注意事项 -->
+<!-- 重要注意事项 — 完整展示，按类型分组 -->
 {% set notes = ta.important_notes %}
 {% if notes %}
 <div class="card" style="border-left: 4px solid var(--danger);">
-    <h4>⚠️ 重要注意事项</h4>
-    <ul style="margin: 0; padding-left: 20px; font-size: 14px; max-height: 300px; overflow-y: auto;">
-        {% for note in notes[:15] %}
-        <li style="margin-bottom: 6px;">
-            <span>{{ note.text }}</span>
-            <span class="tag tag-{{ note.priority }}" style="margin-left: 6px; font-size: 11px;">
-                {{ {'urgent': '紧急', 'high': '高优', 'medium': '中', 'low': '低'}.get(note.priority, '') }}
-            </span>
-        </li>
-        {% endfor %}
-        {% if notes|length > 15 %}
-        <li style="color: var(--text-secondary);">...共 {{ notes|length }} 条注意事项</li>
+    <h4>⚠️ 重要注意事项（{{ notes|length }} 条）</h4>
+
+    {% set type_groups = {
+        'stamp': {'label': '盖章签字', 'icon': '🖊️'},
+        'format': {'label': '格式装订密封', 'icon': '📦'},
+        'pricing': {'label': '保证金与报价', 'icon': '💰'},
+        'certs': {'label': '证书与业绩证明', 'icon': '📜'},
+        'qualifications': {'label': '承诺函与授权', 'icon': '📝'},
+        'get_docs': {'label': '踏勘答疑澄清', 'icon': '🔍'},
+    } %}
+    {% set priority_labels = {'urgent': '紧急', 'high': '高优', 'medium': '中', 'low': '低'} %}
+
+    {% for type_key, type_info in type_groups.items() %}
+        {% set type_notes = notes | selectattr('task_type', 'equalto', type_key) | list %}
+        {% if type_notes %}
+        <div style="margin-bottom: 16px;">
+            <h5 style="font-size: 14px; margin: 0 0 8px; color: var(--text);">{{ type_info.icon }} {{ type_info.label }}（{{ type_notes|length }} 条）</h5>
+            <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6;">
+                {% for note in type_notes %}
+                <li style="margin-bottom: 6px;">
+                    {{ note.text }}
+                    <span class="tag tag-{{ note.priority }}" style="margin-left: 6px; font-size: 11px;">
+                        {{ priority_labels.get(note.priority, note.priority) }}
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
         {% endif %}
-    </ul>
+    {% endfor %}
+
+    {# 未归类的注意事项 #}
+    {% set other_notes = [] %}
+    {% for n in notes %}
+        {% if n.task_type not in ['stamp', 'format', 'pricing', 'certs', 'qualifications', 'get_docs'] %}
+            {% set _ = other_notes.append(n) %}
+        {% endif %}
+    {% endfor %}
+    {% if other_notes %}
+    <div style="margin-bottom: 16px;">
+        <h5 style="font-size: 14px; margin: 0 0 8px; color: var(--text);">📌 其他注意事项（{{ other_notes|length }} 条）</h5>
+        <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6;">
+            {% for note in other_notes %}
+            <li style="margin-bottom: 6px;">
+                {{ note.text }}
+                <span class="tag tag-{{ note.priority }}" style="margin-left: 6px; font-size: 11px;">
+                    {{ priority_labels.get(note.priority, note.priority) }}
+                </span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
     <form method="post" action="/tender/enrich-tasks/{{ notice.id }}" class="inline-form" style="margin-top: 12px;">
-        <button type="submit" class="btn btn-sm btn-outline">📥 同步到任务清单（自动映射去重）</button>
+        <button type="submit" class="btn btn-sm btn-outline">📥 同步到任务清单（按类型自动映射去重）</button>
     </form>
 </div>
 {% endif %}
@@ -215,6 +383,14 @@
 <!-- 解析信息 -->
 <div style="text-align: right; font-size: 12px; color: var(--text-muted); margin-top: 8px;">
     文件：{{ ta.file_name }} · 解析时间：{{ ta.parsed_at[:19] }}
+    {% if ta.parse_engine == 'llm' %}
+    · <span style="color: var(--primary);" title="LLM 解析质量更高">🤖 {{ ta.llm_model or 'LLM' }}</span>
+    {% if ta.llm_usage %}
+    · <span title="Prompt + Completion">{{ ta.llm_usage.total_tokens }} tokens</span>
+    {% endif %}
+    {% else %}
+    · <span style="color: var(--text-muted);">规则解析</span>
+    {% endif %}
     <!-- 重新上传（HTMX 驱动，不跳转页面） -->
     <form hx-post="/tender/upload/{{ notice.id }}"
           hx-encoding="multipart/form-data"
