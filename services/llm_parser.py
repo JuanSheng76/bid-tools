@@ -72,16 +72,18 @@ SYSTEM_PROMPT = """你是一个专业的招标文件解析助手。你的任务�
     "total_points": "总分（数字）",
     "items": [
       {
+        "depth": "层级深度：1(大项，如'商务部分')/2(子项，如'企业资质')/3(孙项，如'ISO认证')。必须还原招标文件中的原始层级结构",
+        "score_type": "objective(客观分：满足硬性条件即得分、按数量累计，如资质等级、业绩数量、人员证书) / subjective(主观分：评委根据方案质量、优劣在范围内打分，如技术方案、实施方案)",
         "category": "price(报价)/technical(技术)/performance(业绩)/personnel(人员)/qualification(资质)/other(其他)",
-        "label": "评分项名称（完整名称）",
-        "max_points": "该项满分（数字）",
+        "label": "评分项名称（完整名称，含原始序号如'1.1'、'（一）'）",
+        "max_points": "该项满分（数字）。depth=1的大项填写子项合计值",
         "scoring_method": "评分方法详细描述（完整原文，说明如何得分、扣分规则）",
         "requirements": ["该项对投标人的具体要求，逐条列出，不简写"],
-        "self_assessed_score": "基于公司现有资料预估的得分（数字，0~max_points）。报价项无法预知填0；技术方案项根据经验给预估；业绩/人员/资质项逐项对比后打分。",
-        "self_assessed_reason": "自评依据（说明公司有哪些匹配项、缺什么、为什么给这个分数，一句话概括）"
+        "self_assessed_score": "客观分：基于公司资料逐项对比后的预估得分（数字，0~max_points）；主观分：统一填0（无法预判评委打分）",
+        "self_assessed_reason": "自评依据。客观分写清楚匹配项/缺失项/计算过程；主观分可写'评委主观打分，无法预估'"
       }
     ],
-    "self_assessed_total": "所有 self_assessed_score 的总和（数字）",
+    "self_assessed_total": "所有客观分 self_assessed_score 的总和（数字）",
     "raw_text": "评分标准/评标办法相关原文段落"
   },
   "important_notes": [
@@ -145,29 +147,71 @@ SYSTEM_PROMPT = """你是一个专业的招标文件解析助手。你的任务�
   - "50000元"→5.0，"1000000元"→100.0
 - 保留原文中的到账截止时间要求、转出账户要求（如"须从基本账户转出"）、保函格式要求
 
-### 2. 评分标准 + 自评得分 —— 逐项分析公司能拿多少分
+### 2. 评分标准 + 自评得分 —— 还原层级，区分主客观
 
 - 招标文件中"评分标准"可能以表格形式出现，也可能以"评标办法""评审办法""综合评分""评分细则"等标题下的自然段落形式出现
 - 仔细阅读全文，找出所有明确的评分项及其分值，不要遗漏任何评分维度
+
+#### 层级还原（depth 字段）
+
+- **必须还原招标文件中的原始层级结构**：大项→子项→孙项，分别对应 depth=1/2/3
+- 例如招标文件结构：
+  - "一、商务部分（30分）" → depth=1
+    - "1. 企业资质（15分）" → depth=2
+      - "（1）ISO9001认证（5分）" → depth=3
+      - "（2）安全生产许可证（10分）" → depth=3
+    - "2. 类似项目业绩（15分）" → depth=2
+  - "二、技术部分（50分）" → depth=1
+    - "1. 技术方案（30分）" → depth=2
+    - "2. 项目组织方案（20分）" → depth=2
+  - "三、投标报价（20分）" → depth=1（只有一个子项时可省略子项直接 depth=1）
+- depth=1 的 max_points 填写该大项下所有子项的合计值
+- **即使招标文件只有一层结构（没有子项），也要按大项拆分 depth=1，不能把所有评分项平铺在一起**
 - 正确归类：报价相关→price，技术方案/服务方案/实施方案→technical，项目业绩/类似项目→performance，人员配置/项目负责人→personnel，企业资质/信誉→qualification
+
+#### 客观分 vs 主观分（score_type 字段）
+
+必须逐项判断评分类型：
+
+- **objective（客观分）**：满足硬性条件即得分，评委没有自由裁量空间。包括：
+  - 资质等级（有X级证书→得满分，没有→0）
+  - 业绩数量（每提供1个得X分，最高Y分——按数量累计，规则明确）
+  - 人员证书（持有X证书→得X分）
+  - 企业荣誉/获奖（有→得分，没有→0）
+  - 投标报价（按公式计算，如最低价得满分、其他按比例扣分——虽有公式但取决于实际报价，暂标客观）
+
+- **subjective（主观分）**：评委根据质量、优劣在范围内打分，没有硬性得/不得分标准。包括：
+  - 技术方案（"根据方案的科学性、合理性在0-30分之间打分"）
+  - 实施方案/服务方案（"优得15-20分，良得10-14分，一般得5-9分"）
+  - 项目组织/人员配置方案（评委主观判断优劣）
+  - 售后服务承诺（"根据承诺内容的完善程度打分"）
+
+- **关键判断口诀**：有明确"满足X条件→得Y分"规则的 → objective；需要评委"根据XX优劣/合理性在范围内打分"的 → subjective
+
+- **⚠️ 防误判兜底（业绩/资质/财务优先客观）**：业绩(performance)、资质(qualification)、人员证书(personnel)、财务(financial) 这几类评分项，默认判为 objective，除非原文 scoring_method 中**明确出现**以下主观措辞才判 subjective：
+  - "评委根据…综合打分"、"根据…优劣/好坏/合理性在…范围内打分"
+  - "优得X分，良得Y分，一般得Z分"（等级由评委主观判定）
+  - "专家根据…酌情给分"、"评委根据…进行比较后打分"
+  - 简言之：除非原文明确把评判权交给评委，否则一律按客观分处理
+
 - **scoring_method 必须完整**：保留原文中关于如何评分的描述（如"满足得X分，不满足得0分""每提供一个得X分，最高Y分""根据优劣在X-Y分之间打分"）
 - **requirements 必须逐条完整列出**：例如"投标人近三年（2023年1月至今）须具有至少2个单项合同金额不低于100万元的光伏电站检测业绩，须提供合同复印件及验收报告"
 
-#### 自评得分 —— 关键决策依据（认真评估每一项）
+#### 自评得分 —— 客观分精准预估，主观分填0
 
-你需要根据**公司现有资料**（资质、业绩、人员），对每个评分项预估本公司能得多少分。这是投标决策者的核心参考，请逐项认真评估：
+你需要根据**公司现有资料**（资质、业绩、人员），对每个评分项预估本公司能得多少分：
 
-1. **逐项对比**：仔细阅读每个评分项的 scoring_method 和 requirements，然后对比公司现有资料中是否有匹配项
-2. **客观评分规则**：
+1. **客观分（score_type=objective）**：逐项对比公司资料，严格按评分规则计算
    - 公司完全满足所有要求 → 给满分或接近满分（max_points × 90%~100%）
-   - 公司部分满足（如要求3个业绩只有2个、要求一级资质持有二级）→ 按评分规则打折
-   - 公司完全不满足或无法判断 → 给0分
-3. **报价项(price)**：无法预知报价，一律填0
-4. **技术方案项(technical)**：无法预知方案质量，根据公司是否有相关项目经验给预估（有丰富同类经验给60~80%分，有部分经验给30~60%分，无经验给0~20%分）
-5. **业绩项(performance)**：逐项对比公司业绩列表中是否有匹配的（金额够不够、时间在不在范围内、类型对不对口），严格按评分规则计算
-6. **人员项(personnel)**：对比公司人员列表中是否有持有相应证书/职称的人员
-7. **资质项(qualification)**：对比公司资质列表中是否持有相应等级/类型的证书
-8. **self_assessed_reason** 必须写清楚判断依据，例如"公司有2个同类业绩（要求3个），金额均达标，按每提供1个得5分计算，预计得10/15分"
+   - 公司部分满足 → 按评分规则打折（如要求3个业绩只有2个，每提供1个得5分，填10/15）
+   - 公司完全不满足 → 填0
+   - 报价项(price)无法预知实际报价 → 填0
+2. **主观分（score_type=subjective）**：无法预判评委主观判断 → **统一填0**，不要猜测
+3. **self_assessed_reason 必须简洁**，例如：
+   - 客观分："公司持有建筑工程施工总承包一级资质，满足要求，得10/10分"
+   - 客观分："公司有2个同类业绩（要求3个），按每提供1个得5分计算，预计得10/15分"
+   - 客观分："公司无市政工程业绩，得0/10分"
+   - 主观分："评委主观打分，无法预估"
 
 ### 3. 重要注意事项 —— 完整展示，按段落合并
 
@@ -368,33 +412,46 @@ def _validate_llm_result(raw: dict) -> dict:
     except (ValueError, TypeError):
         scoring["total_points"] = 100
 
-    # 修复每个 scoring item（含新字段：self_assessed_score/self_assessed_reason）
+    # 修复每个 scoring item（含新字段：score_type/depth/self_assessed_score/self_assessed_reason）
     items = []
     for item in scoring.get("items", []) or []:
         if isinstance(item, dict):
             item.setdefault("category", "other")
             item.setdefault("label", "")
+            item.setdefault("score_type", "objective")
+            item.setdefault("depth", 1)
+            try:
+                item["depth"] = int(item["depth"])
+            except (ValueError, TypeError):
+                item["depth"] = 1
             try:
                 item["max_points"] = int(item.get("max_points", 0))
             except (ValueError, TypeError):
                 item["max_points"] = 0
             item.setdefault("scoring_method", "")
             item.setdefault("requirements", [])
-            # 自评得分：确保是数字且在合理范围
-            try:
-                sas = int(item.get("self_assessed_score", 0))
-            except (ValueError, TypeError):
-                sas = 0
-            item["self_assessed_score"] = max(0, min(sas, item["max_points"]))
+            # 自评得分：主观分强制归0
+            is_subjective = item.get("score_type") == "subjective"
+            if is_subjective:
+                item["self_assessed_score"] = 0
+            else:
+                try:
+                    sas = int(item.get("self_assessed_score", 0))
+                except (ValueError, TypeError):
+                    sas = 0
+                item["self_assessed_score"] = max(0, min(sas, item["max_points"]))
             item.setdefault("self_assessed_reason", "")
             items.append(item)
     scoring["items"] = items
 
-    # 修复自评总分
+    # 修复自评总分（仅统计客观分）
     try:
         scoring["self_assessed_total"] = int(scoring.get("self_assessed_total", 0))
     except (ValueError, TypeError):
-        scoring["self_assessed_total"] = sum(i.get("self_assessed_score", 0) for i in items)
+        scoring["self_assessed_total"] = sum(
+            i.get("self_assessed_score", 0) for i in items
+            if i.get("score_type") == "objective"
+        )
 
     scoring.setdefault("raw_text", "")
     raw["scoring_criteria"] = scoring

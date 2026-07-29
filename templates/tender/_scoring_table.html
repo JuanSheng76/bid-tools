@@ -1,0 +1,162 @@
+{# 评分标准表格 — 独立片段，供 HTMX 局部刷新 #}
+{% set ta = analysis %}
+{% set scoring_items = ta.scoring_criteria.get("items", []) %}
+
+{# 安全默认值 + 统计（兼容旧数据缺失 score_type/depth/self_assessed_score） #}
+{% set has_children = false %}
+{% set obj_total = 0 %}
+{% set obj_max = 0 %}
+{% set obj_count = 0 %}
+{% set all_max = 0 %}
+{% for item in scoring_items %}
+    {% if (item.depth or 1) >= 2 %}{% set has_children = true %}{% endif %}
+    {% set all_max = all_max + (item.max_points or 0) %}
+    {% if item.get("score_type", "objective") == "objective" %}
+        {% set obj_total = obj_total + (item.get("self_assessed_score", 0) | int) %}
+        {% set obj_max = obj_max + (item.max_points or 0) %}
+        {% set obj_count = obj_count + 1 %}
+    {% endif %}
+{% endfor %}
+
+{% if scoring_items %}
+<div class="table-wrap">
+    <table style="width: 100%; font-size: 13px;">
+        <thead>
+            <tr>
+                <th>评分项</th>
+                <th style="width: 70px;">类型</th>
+                <th style="width: 60px; text-align: right;">满分</th>
+                <th style="width: 170px; text-align: center;">自评得分</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in scoring_items %}
+            {% set is_header = (item.depth == 1 and has_children) %}
+            {% set depth = item.depth or 1 %}
+            {% set indent = (depth - 1) * 20 %}
+            {% set sas = item.get("self_assessed_score", 0) %}
+            {% set max_p = item.max_points %}
+            {% if max_p > 0 %}
+                {% set ratio = (sas / max_p * 100) | int %}
+            {% else %}
+                {% set ratio = 0 %}
+            {% endif %}
+
+            {% if is_header %}
+            {# 大项标题行 #}
+            <tr style="background: #f5f7fa; border-top: 2px solid #e0e0e0;">
+                <td style="font-weight: 700; font-size: 14px; padding: 10px 12px;">
+                    {{ item.label }}
+                </td>
+                <td>
+                    <span class="tag" style="font-size: 11px;
+                        {{ 'background: #e8f5e9; color: #2e7d32;' if item.score_type == 'objective' else 'background: #fff3e0; color: #e65100;' }}">
+                        {{ '📋 客观' if item.score_type == 'objective' else '🎯 主观' }}
+                    </span>
+                </td>
+                <td style="text-align: right; font-weight: 700; font-size: 14px;">{{ max_p }}</td>
+                <td style="text-align: center; color: var(--text-muted); font-size: 12px;">—</td>
+            </tr>
+            {% if item.scoring_method %}
+            <tr style="background: #f5f7fa;">
+                <td colspan="4" style="padding: 0 12px 8px; font-size: 11px; color: var(--text-secondary);">{{ item.scoring_method[:200] }}{% if item.scoring_method|length > 200 %}...{% endif %}</td>
+            </tr>
+            {% endif %}
+
+            {% else %}
+            {# 子项/孙项数据行 #}
+            <tr>
+                <td style="padding-left: {{ indent + 12 }}px; font-size: {{ '13px' if depth <= 2 else '12px' }};">
+                    <strong>{{ item.label }}</strong>
+                    {% if item.scoring_method %}
+                    <br><span style="font-size: 11px; color: var(--text-muted);">{{ item.scoring_method[:150] }}{% if item.scoring_method|length > 150 %}...{% endif %}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="tag" style="font-size: 10px;
+                        {{ 'background: #e8f5e9; color: #2e7d32;' if item.score_type == 'objective' else 'background: #fff3e0; color: #e65100;' }}">
+                        {{ '客观' if item.score_type == 'objective' else '主观' }}
+                    </span>
+                </td>
+                <td style="text-align: right; font-weight: 600;">{{ max_p }}</td>
+                <td style="text-align: center;">
+                    {% if item.score_type == 'objective' %}
+                    {# 客观分：可编辑 #}
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+                        <input type="number"
+                               min="0" max="{{ max_p }}"
+                               value="{{ sas }}"
+                               name="new_score"
+                               hx-post="/tender/analysis/{{ notice.id }}/score"
+                               hx-vals='{"item_index": "{{ loop.index0 }}"}'
+                               hx-trigger="change"
+                               hx-target="#scoring-table-container"
+                               hx-swap="outerHTML"
+                               style="width: 52px; text-align: center; padding: 3px 4px; font-size: 13px; font-weight: 600;
+                                      border: 1px solid #d0d0d0; border-radius: 4px;
+                                      {% if ratio >= 80 %}color: #2e7d32; border-color: #a5d6a7;
+                                      {% elif ratio >= 40 %}color: #e65100; border-color: #ffcc80;
+                                      {% else %}color: #c62828; border-color: #ef9a9a;{% endif %}">
+                        <span style="font-size: 12px;">/ {{ max_p }}</span>
+                    </div>
+                    {% else %}
+                    {# 主观分：只读 #}
+                    <span style="color: var(--text-muted); font-size: 13px;">0</span>
+                    <span style="font-size: 11px; color: var(--text-muted);"> / {{ max_p }}</span>
+                    <br><span style="font-size: 10px; color: #bdbdbd;">评委主观</span>
+                    {% endif %}
+                    {% set reason = item.get("self_assessed_reason", "") %}
+                    {% if reason %}
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px; max-width: 160px;">{{ reason }}</div>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endif %}
+
+            {% if item.requirements %}
+            <tr>
+                <td colspan="4" style="padding: 4px 12px 8px {{ indent + 12 }}px; font-size: 12px; color: var(--text-secondary);">
+                    <ul style="margin: 0; padding-left: 16px;">
+                        {% for req in item.requirements %}
+                        <li>{{ req }}</li>
+                        {% endfor %}
+                    </ul>
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            {# 客观分合计 #}
+            <tr style="border-top: 2px solid #e0e0e0; background: #fafafa;">
+                <td colspan="2" style="text-align: right; font-weight: 600; font-size: 13px;">
+                    客观分合计
+                    <span style="font-weight: 400; font-size: 11px; color: var(--text-muted);">（可预估 {{ obj_count }} 项）</span>
+                </td>
+                <td style="text-align: right; font-weight: 600;">{{ obj_max }}</td>
+                <td style="text-align: center; font-weight: 700; font-size: 15px;
+                           {% if obj_max > 0 %}{% set otr = (obj_total / obj_max * 100) | int %}{% else %}{% set otr = 0 %}{% endif %}
+                           {% if otr >= 70 %}color: #2e7d32;
+                           {% elif otr >= 40 %}color: #e65100;
+                           {% else %}color: #c62828;{% endif %}">
+                    {{ obj_total }}
+                    <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/ {{ obj_max }}（{{ otr }}%）</span>
+                </td>
+            </tr>
+            {# 全部分合计（含主观满分） #}
+            <tr style="background: #fafafa;">
+                <td colspan="2" style="text-align: right; font-weight: 600; font-size: 13px;">招标文件总分</td>
+                <td style="text-align: right; font-weight: 700;">{{ ta.scoring_criteria.total_points }}</td>
+                <td style="text-align: center; font-size: 12px; color: var(--text-muted);">
+                    {% if ta.scoring_criteria.total_points > 0 %}
+                    {% set remaining = ta.scoring_criteria.total_points - obj_total %}
+                    预估 + 主观满分 = {{ obj_total }} + {{ remaining }} = <strong>{{ ta.scoring_criteria.total_points }}</strong>
+                    {% endif %}
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+<p class="text-muted">未能从招标文件中解析出明确的评分标准</p>
+{% endif %}

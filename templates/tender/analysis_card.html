@@ -145,110 +145,27 @@
     {% endif %}
 </div>
 
-<!-- 评分标准 — 含自评得分 -->
+<!-- 评分标准 — 含层级/主客观/可编辑自评 -->
 <div class="card" style="border-left: 4px solid var(--warning);">
     <h4>📊 评分标准（评标办法）
         <span style="font-weight: normal; font-size: 13px; color: var(--text-secondary);">
             （满分 {{ ta.scoring_criteria.total_points }} 分）
-            {% set sat = ta.scoring_criteria.get("self_assessed_total") %}
-            {% if sat is not none and sat > 0 %}
-            · <span style="font-weight: 600; color: var(--primary);">自评合计 {{ sat }} 分</span>
-            <span style="color: var(--text-muted);">（{{ (sat / ta.scoring_criteria.total_points * 100) | int }}%）</span>
+            {% set obj_total = 0 %}
+            {% for item in ta.scoring_criteria.get("items", []) %}
+                {% if item.get("score_type", "objective") == "objective" %}
+                    {% set obj_total = obj_total + (item.get("self_assessed_score", 0) | int) %}
+                {% endif %}
+            {% endfor %}
+            {% if obj_total > 0 %}
+            · <span style="font-weight: 600; color: var(--primary);">客观分预估 {{ obj_total }} 分</span>
+            <span style="color: var(--text-muted);">（{{ (obj_total / ta.scoring_criteria.total_points * 100) | int }}%）</span>
             {% endif %}
         </span>
     </h4>
 
-    {% set scoring_items = ta.scoring_criteria.get("items", []) %}
-    {% if scoring_items %}
-    <div class="table-wrap">
-        <table style="width: 100%; font-size: 13px;">
-            <thead>
-                <tr>
-                    <th>评分项</th>
-                    <th style="width: 60px;">类别</th>
-                    <th style="width: 60px; text-align: right;">满分</th>
-                    <th style="width: 160px; text-align: center;">自评得分</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in scoring_items %}
-                {% set sas = item.get("self_assessed_score", 0) %}
-                {% set max_p = item.max_points %}
-                {% if max_p > 0 %}
-                    {% set ratio = (sas / max_p * 100) | int %}
-                {% else %}
-                    {% set ratio = 0 %}
-                {% endif %}
-                <tr>
-                    <td>
-                        <strong>{{ item.label }}</strong>
-                        {% if item.scoring_method %}
-                        <br><span style="font-size: 11px; color: var(--text-muted);">{{ item.scoring_method[:120] }}{% if item.scoring_method|length > 120 %}...{% endif %}</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% set cat_map = {'price': '报价', 'technical': '技术', 'performance': '业绩', 'personnel': '人员', 'qualification': '资质'} %}
-                        <span class="tag">{{ cat_map.get(item.category, '其他') }}</span>
-                    </td>
-                    <td style="text-align: right; font-weight: 600;">{{ max_p }}</td>
-                    <td style="text-align: center;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="flex: 1; background: #f0f0f0; height: 20px; border-radius: 4px; overflow: hidden; position: relative;">
-                                {% if sas > 0 %}
-                                <div style="height: 100%; border-radius: 4px; transition: width 0.3s;
-                                            {% if ratio >= 80 %}background: #4caf50;
-                                            {% elif ratio >= 40 %}background: #ff9800;
-                                            {% else %}background: #f44336;{% endif %}
-                                            width: {{ ratio }}%;"></div>
-                                {% endif %}
-                            </div>
-                            <span style="font-weight: 700; font-size: 14px; min-width: 50px;
-                                         {% if ratio >= 80 %}color: #4caf50;
-                                         {% elif ratio >= 40 %}color: #ff9800;
-                                         {% else %}color: #f44336;{% endif %}">
-                                {{ sas }}<span style="font-size: 11px; font-weight: 400;">/{{ max_p }}</span>
-                            </span>
-                        </div>
-                        {% set reason = item.get("self_assessed_reason", "") %}
-                        {% if reason %}
-                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px; text-align: left;">{{ reason }}</div>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% if item.requirements %}
-                <tr>
-                    <td colspan="4" style="padding-top: 0; font-size: 12px; color: var(--text-secondary);">
-                        <ul style="margin: 0; padding-left: 16px;">
-                            {% for req in item.requirements %}
-                            <li>{{ req }}</li>
-                            {% endfor %}
-                        </ul>
-                    </td>
-                </tr>
-                {% endif %}
-                {% endfor %}
-            </tbody>
-            <tfoot>
-                <tr style="border-top: 2px solid #e0e0e0; background: #fafafa;">
-                    <td colspan="2" style="text-align: right; font-weight: 600;">合计</td>
-                    <td style="text-align: right; font-weight: 600;">{{ ta.scoring_criteria.total_points }}</td>
-                    <td style="text-align: center; font-weight: 700; font-size: 15px;
-                               {% set sat = ta.scoring_criteria.get("self_assessed_total") or 0 %}
-                               {% set tp = ta.scoring_criteria.total_points %}
-                               {% if tp > 0 %}{% set tr = (sat / tp * 100) | int %}{% else %}{% set tr = 0 %}{% endif %}
-                               {% if tr >= 70 %}color: #4caf50;
-                               {% elif tr >= 40 %}color: #ff9800;
-                               {% else %}color: #f44336;{% endif %}">
-                        {{ sat }}
-                        <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/{{ tp }}（{{ tr }}%）</span>
-                    </td>
-                </tr>
-            </tfoot>
-        </table>
+    <div id="scoring-table-container">
+        {% include "tender/_scoring_table.html" %}
     </div>
-    {% else %}
-    <p class="text-muted">未能从招标文件中解析出明确的评分标准</p>
-    {% endif %}
 
     {% if ta.scoring_criteria.raw_text %}
     <details style="margin-top: 8px;">

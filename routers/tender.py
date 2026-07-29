@@ -276,3 +276,63 @@ async def tender_llm_status(request: Request):
         "configured": bool(LLM_API_KEY),
         "model": LLM_MODEL if LLM_API_KEY else None,
     })
+
+
+@router.post("/analysis/{notice_id}/score")
+async def tender_update_score(
+    request: Request,
+    notice_id: str,
+    item_index: int = Form(...),
+    new_score: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """HTMX：手动修改客观分自评得分，返回更新后的评分表格"""
+    session = get_session(request)
+    if not session:
+        return HTMLResponse("请先登录", status_code=401)
+
+    notice = (await db.execute(
+        select(BidNotice).where(BidNotice.id == notice_id).options(
+            selectinload(BidNotice.tasks)
+        )
+    )).scalar_one_or_none()
+
+    if not notice or not notice.tender_analysis:
+        return HTMLResponse("标讯或分析数据不存在", status_code=404)
+
+    analysis = notice.tender_analysis
+    items = analysis.get("scoring_criteria", {}).get("items", [])
+
+    if item_index < 0 or item_index >= len(items):
+        return HTMLResponse("评分项索引无效", status_code=400)
+
+    item = items[item_index]
+    if not isinstance(item, dict):
+        return HTMLResponse("评分项数据异常", status_code=400)
+
+    # 仅允许修改客观分
+    if item.get("score_type") != "objective":
+        return HTMLResponse("仅客观分可手动修改", status_code=400)
+
+    max_points = item.get("max_points", 0)
+    new_score = max(0, min(new_score, max_points))
+    item["self_assessed_score"] = new_score
+
+    # 重算客观分合计
+    obj_total = sum(
+        i.get("self_assessed_score", 0) for i in items
+        if isinstance(i, dict) and i.get("score_type") == "objective"
+    )
+    analysis["scoring_criteria"]["self_assessed_total"] = obj_total
+
+    # 写入数据库
+    notice.tender_analysis = analysis
+    await db.commit()
+
+    # 返回刷新后的评分表格
+    return templates.TemplateResponse("tender/_scoring_table.html", {
+        "request": request,
+        "session": session,
+        "notice": notice,
+        "analysis": analysis,
+    })
