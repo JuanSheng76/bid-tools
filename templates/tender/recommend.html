@@ -7,7 +7,21 @@
 {% set rec = ta.recommendations %}
 {% set scoring_items = ta.scoring_criteria.get("items", []) %}
 {% set tp = ta.scoring_criteria.total_points %}
-{% set sat = ta.scoring_criteria.get("self_assessed_total") or 0 %}
+{# 从子项计算预估合计（有层级时跳过 depth=1 header，避免与子项重复计入） #}
+{% set ns_est = namespace(all_est = 0, has_children = false) %}
+{% for item in scoring_items %}
+    {% if (item.depth or 1) >= 2 %}{% set ns_est.has_children = true %}{% endif %}
+{% endfor %}
+{% for item in scoring_items %}
+    {% if not ns_est.has_children or (item.depth or 1) >= 2 %}
+    {% set s = item.get("self_assessed_score", 0) | int %}
+    {% if s == 0 and item.get("score_type", "objective") != "objective" %}
+        {% set s = ((item.max_points or 0) * 0.8) | int %}
+    {% endif %}
+    {% set ns_est.all_est = ns_est.all_est + s %}
+    {% endif %}
+{% endfor %}
+{% set sat = ns_est.all_est %}
 
 <div class="flex-between mb">
     <a href="/notices/{{ notice.id }}#tender-analysis" class="btn btn-sm">← 返回标讯详情</a>

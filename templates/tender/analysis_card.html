@@ -151,17 +151,22 @@
         <span style="font-weight: normal; font-size: 13px; color: var(--text-secondary);">
             （满分 {{ ta.scoring_criteria.total_points }} 分）
             <span id="scoring-est-header">
-            {% set ns = namespace(all_est = 0) %}
+            {% set ns_est = namespace(all_est = 0, has_children = false) %}
             {% for item in ta.scoring_criteria.get("items", []) %}
+                {% if (item.depth or 1) >= 2 %}{% set ns_est.has_children = true %}{% endif %}
+            {% endfor %}
+            {% for item in ta.scoring_criteria.get("items", []) %}
+                {% if not ns_est.has_children or (item.depth or 1) >= 2 %}
                 {% set s = item.get("self_assessed_score", 0) | int %}
                 {% if s == 0 and item.get("score_type", "objective") != "objective" %}
                     {% set s = ((item.max_points or 0) * 0.8) | int %}
                 {% endif %}
-                {% set ns.all_est = ns.all_est + s %}
+                {% set ns_est.all_est = ns_est.all_est + s %}
+                {% endif %}
             {% endfor %}
-            {% if ns.all_est > 0 %}
-            · <span style="font-weight: 600; color: var(--primary);">预估合计 {{ ns.all_est }} 分</span>
-            <span style="color: var(--text-muted);">（{{ (ns.all_est / ta.scoring_criteria.total_points * 100) | int }}%）</span>
+            {% if ns_est.all_est > 0 %}
+            · <span style="font-weight: 600; color: var(--primary);">预估合计 {{ ns_est.all_est }} 分</span>
+            <span style="color: var(--text-muted);">（{{ (ns_est.all_est / ta.scoring_criteria.total_points * 100) | int }}%）</span>
             {% endif %}
             </span>
         </span>

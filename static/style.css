@@ -1423,6 +1423,18 @@ a[role="button"]:hover {
     background: rgba(242, 184, 75, .06);
 }
 
+.btn-outline {
+    border-color: var(--ops-line);
+    color: var(--ops-text-soft);
+    background: var(--ops-panel-raised);
+}
+
+.btn-outline:hover {
+    border-color: rgba(74, 160, 172, .4);
+    color: var(--ops-text);
+    background: #142833;
+}
+
 .btn-sm {
     min-height: 29px;
     padding: 5px 10px;
@@ -2560,6 +2572,29 @@ select option {
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+/* 操作栏内按钮/链接/菜单高度完全统一（用 line-height 居中，兼容 button shadow DOM 限制） */
+.detail-actions__left .btn-sm,
+.detail-actions__right .btn-sm,
+.detail-actions__left .action-menu > summary,
+.detail-actions__right .action-menu > summary {
+    min-height: 30px;
+    height: 30px;
+    padding: 0 11px;
+    box-sizing: border-box;
+    vertical-align: middle;
+    line-height: 28px;
+    font-size: 11px;
+}
+.detail-actions__left .inline-form,
+.detail-actions__right .inline-form {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    line-height: 0;
 }
 
 /* 进度条（评估分数等） */

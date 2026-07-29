@@ -17,23 +17,49 @@
             原因：{{ notice.abandon_reason }}
         </span>
         {% endif %}
-    </div>
 
-    <div class="detail-actions__right">
-        {# 主要决策按钮 #}
+        {# 主要决策按钮 → 左侧（统一样式） #}
         {% if notice.status in ['new', 'assessing', 'worth', 'not_worth'] %}
             {% if notice.bid_decision != 'bid' %}
             <form method="post" action="/notices/{{ notice.id }}/decide/bid" class="inline-form"
                   data-confirm='确认决定投标"{{ notice.title }}"吗？'>
-                <button type="submit" class="btn btn-sm btn-success">决定投标</button>
+                <button type="submit" class="btn btn-sm btn-outline">决定投标</button>
             </form>
             {% endif %}
             {% if notice.bid_decision != 'no_bid' %}
             <form method="post" action="/notices/{{ notice.id }}/decide/no_bid" class="inline-form"
                   data-confirm='确认决定不投"{{ notice.title }}"吗？项目将移入已忽略。'>
-                <button type="submit" class="btn btn-sm btn-danger">决定不投</button>
+                <button type="submit" class="btn btn-sm btn-outline">决定不投</button>
             </form>
             {% endif %}
+        {% endif %}
+
+        {# 放弃投标 → 左侧 #}
+        {% if notice.bid_decision == 'bid' and notice.status not in ['completed', 'ignored'] %}
+        <button type="button" class="btn btn-sm btn-outline"
+                onclick="openAbandonDialog()">放弃投标</button>
+        {% endif %}
+    </div>
+
+    <div class="detail-actions__right">
+        {# 已决定投标：行内操作 → 右侧 #}
+        {% if notice.bid_decision == 'bid' and notice.status not in ['completed', 'ignored'] %}
+            <a href="/tasks/generate/{{ notice.id }}" class="btn btn-sm btn-outline">
+                {{ '重排计划' if notice.tasks and notice.tasks|length > 0 else '生成倒排计划' }}
+            </a>
+            <span id="tender-op-buttons">
+            {% if not notice.tender_analysis %}
+            <button type="button" class="btn btn-sm btn-outline"
+                    onclick="document.getElementById('tender-file-input').click()">
+                📄 上传招标文件解析
+            </button>
+            {% else %}
+            <a href="/tender/recommend/{{ notice.id }}" class="btn btn-sm btn-outline">查看解析与推荐</a>
+            <form method="post" action="/tender/enrich-tasks/{{ notice.id }}" class="inline-form">
+                <button type="submit" class="btn btn-sm btn-outline">同步到任务清单</button>
+            </form>
+            {% endif %}
+            </span>
         {% endif %}
 
         {# 更多操作 #}
@@ -45,26 +71,6 @@
                     <button type="submit">执行评估</button>
                 </form>
                 {% endif %}
-                {% if notice.bid_decision == 'bid' and notice.status not in ['completed', 'ignored'] %}
-                <a href="/tasks/generate/{{ notice.id }}">
-                    {{ '重排计划' if notice.tasks and notice.tasks|length > 0 else '生成倒排计划' }}
-                </a>
-                <span id="tender-op-buttons">
-                {% if not notice.tender_analysis %}
-                <button type="button"
-                        onclick="document.getElementById('tender-file-input').click()">
-                    📄 上传招标文件解析
-                </button>
-                {% else %}
-                <a href="/tender/recommend/{{ notice.id }}">查看解析与推荐</a>
-                <form method="post" action="/tender/enrich-tasks/{{ notice.id }}" class="inline-form">
-                    <button type="submit">同步到任务清单</button>
-                </form>
-                {% endif %}
-                </span>
-                <button type="button" onclick="openAbandonDialog()" class="text-danger">放弃投标</button>
-                {% endif %}
-                <hr style="margin:4px 0; border-color:var(--ops-line-soft);">
                 <form method="post" action="/notices/{{ notice.id }}/delete"
                       data-confirm='确定删除"{{ notice.title }}"吗？删除后无法恢复。'>
                     <button type="submit" class="text-danger">删除标讯</button>

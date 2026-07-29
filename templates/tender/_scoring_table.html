@@ -3,8 +3,13 @@
 {% set scoring_items = ta.scoring_criteria.get("items", []) %}
 
 {# 安全默认值 + 统计 — 必须用 namespace()，Jinja2 for 循环内 set 不修改外层作用域 #}
-{% set ns = namespace(
-    has_children = false,
+{# Pass 1: 检测是否有层级结构（depth >= 2 的子项存在则跳过 depth=1 的 header 合计） #}
+{% set ns = namespace(has_children = false) %}
+{% for item in scoring_items %}
+    {% if (item.depth or 1) >= 2 %}{% set ns.has_children = true %}{% endif %}
+{% endfor %}
+{# Pass 2: 计算主客观合计 — 有层级时仅统计子项，避免 depth=1 header 与其子项重复计入 #}
+{% set ns2 = namespace(
     obj_total = 0,
     obj_max = 0,
     obj_count = 0,
@@ -14,21 +19,22 @@
     all_max = 0
 ) %}
 {% for item in scoring_items %}
-    {% if (item.depth or 1) >= 2 %}{% set ns.has_children = true %}{% endif %}
-    {% set ns.all_max = ns.all_max + (item.max_points or 0) %}
+    {% if not ns.has_children or (item.depth or 1) >= 2 %}
+    {% set ns2.all_max = ns2.all_max + (item.max_points or 0) %}
     {% if item.get("score_type", "objective") == "objective" %}
-        {% set ns.obj_total = ns.obj_total + (item.get("self_assessed_score", 0) | int) %}
-        {% set ns.obj_max = ns.obj_max + (item.max_points or 0) %}
-        {% set ns.obj_count = ns.obj_count + 1 %}
+        {% set ns2.obj_total = ns2.obj_total + (item.get("self_assessed_score", 0) | int) %}
+        {% set ns2.obj_max = ns2.obj_max + (item.max_points or 0) %}
+        {% set ns2.obj_count = ns2.obj_count + 1 %}
     {% else %}
         {% set sub_sas = item.get("self_assessed_score", 0) | int %}
         {% if sub_sas == 0 %}{% set sub_sas = ((item.max_points or 0) * 0.8) | int %}{% endif %}
-        {% set ns.sub_total = ns.sub_total + sub_sas %}
-        {% set ns.sub_max = ns.sub_max + (item.max_points or 0) %}
-        {% set ns.sub_count = ns.sub_count + 1 %}
+        {% set ns2.sub_total = ns2.sub_total + sub_sas %}
+        {% set ns2.sub_max = ns2.sub_max + (item.max_points or 0) %}
+        {% set ns2.sub_count = ns2.sub_count + 1 %}
+    {% endif %}
     {% endif %}
 {% endfor %}
-{% set all_est = ns.obj_total + ns.sub_total %}
+{% set all_est = ns2.obj_total + ns2.sub_total %}
 
 {# OOB: 同步更新 analysis_card 标题区的预估合计 #}
 <span id="scoring-est-header" hx-swap-oob="innerHTML">
@@ -149,32 +155,32 @@
         </tbody>
         <tfoot>
             {# 客观分合计 #}
-            {% if ns.obj_count > 0 %}
+            {% if ns2.obj_count > 0 %}
             <tr style="border-top: 2px solid #e0e0e0; background: #fafafa;">
                 <td colspan="2" style="text-align: right; font-weight: 600; font-size: 13px;">
-                    📋 客观分预估（{{ ns.obj_count }} 项）
+                    📋 客观分预估（{{ ns2.obj_count }} 项）
                 </td>
-                <td style="text-align: right; font-weight: 600;">{{ ns.obj_max }}</td>
+                <td style="text-align: right; font-weight: 600;">{{ ns2.obj_max }}</td>
                 <td style="text-align: center; font-weight: 700; font-size: 15px;
-                           {% if ns.obj_max > 0 %}{% set otr = (ns.obj_total / ns.obj_max * 100) | int %}{% else %}{% set otr = 0 %}{% endif %}
+                           {% if ns2.obj_max > 0 %}{% set otr = (ns2.obj_total / ns2.obj_max * 100) | int %}{% else %}{% set otr = 0 %}{% endif %}
                            {% if otr >= 70 %}color: #2e7d32;
                            {% elif otr >= 40 %}color: #e65100;
                            {% else %}color: #c62828;{% endif %}">
-                    {{ ns.obj_total }}
-                    <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/ {{ ns.obj_max }}（{{ otr }}%）</span>
+                    {{ ns2.obj_total }}
+                    <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/ {{ ns2.obj_max }}（{{ otr }}%）</span>
                 </td>
             </tr>
             {% endif %}
             {# 主观分预估 #}
-            {% if ns.sub_count > 0 %}
+            {% if ns2.sub_count > 0 %}
             <tr style="background: #fafafa;">
                 <td colspan="2" style="text-align: right; font-weight: 600; font-size: 13px;">
-                    🎯 主观分预估（{{ ns.sub_count }} 项，×0.8）
+                    🎯 主观分预估（{{ ns2.sub_count }} 项，×0.8）
                 </td>
-                <td style="text-align: right; font-weight: 600;">{{ ns.sub_max }}</td>
+                <td style="text-align: right; font-weight: 600;">{{ ns2.sub_max }}</td>
                 <td style="text-align: center; font-weight: 700; font-size: 15px; color: #7b1fa2;">
-                    {{ ns.sub_total }}
-                    <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/ {{ ns.sub_max }}</span>
+                    {{ ns2.sub_total }}
+                    <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/ {{ ns2.sub_max }}</span>
                 </td>
             </tr>
             {% endif %}
