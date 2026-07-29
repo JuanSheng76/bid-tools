@@ -117,6 +117,11 @@ class BidNotice(Base):
     # {total_score, qual_score, perf_score, personnel_score, financial_score, other_score,
     #  recommendation, risk_notes, missing_requirements, assessed_at}
 
+    # 招标文件解析结果（内嵌 JSON）
+    tender_analysis = Column(JSON, nullable=True)
+    # {file_name, file_stored_at, parsed_at, parse_version,
+    #  qualification_requirements, scoring_criteria, recommendations, important_notes}
+
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
 

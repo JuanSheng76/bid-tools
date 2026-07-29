@@ -15,6 +15,30 @@
         <a href="/tasks/generate/{{ notice.id }}" class="btn btn-sm btn-success">
             {{ '重排计划' if notice.tasks and notice.tasks|length > 0 else '生成倒排计划' }}
         </a>
+        <!-- 上传招标文件（按钮区域，OOB 可更新） -->
+        <span id="tender-op-buttons">
+        {% if not notice.tender_analysis %}
+        <form hx-post="/tender/upload/{{ notice.id }}"
+              hx-encoding="multipart/form-data"
+              hx-indicator="#global-loading-overlay"
+              hx-target="#tender-analysis-area"
+              hx-swap="innerHTML"
+              class="inline-form" id="tender-upload-form">
+            <input type="file" name="tender_file" accept=".docx,.pdf" style="display:none"
+                   id="tender-file-input"
+                   onchange="this.form.requestSubmit()">
+            <button type="button" class="btn btn-sm btn-outline"
+                    onclick="document.getElementById('tender-file-input').click()">
+                📄 上传招标文件解析
+            </button>
+        </form>
+        {% else %}
+        <a href="/tender/recommend/{{ notice.id }}" class="btn btn-sm btn-primary">查看解析与推荐</a>
+        <form method="post" action="/tender/enrich-tasks/{{ notice.id }}" class="inline-form">
+            <button type="submit" class="btn btn-sm btn-outline">同步到任务清单</button>
+        </form>
+        {% endif %}
+        </span>
         <button type="button" class="btn btn-sm btn-danger" onclick="openAbandonDialog()" style="--btn-text: '放弃投标';">
             放弃投标
         </button>
@@ -303,6 +327,34 @@
     </form>
 </details>
 
+<!-- 招标文件分析卡片区域（HTMX 上传/重新上传的目标） -->
+<div id="tender-analysis-area">
+{% if notice.tender_analysis %}
+    {# 已有分析数据时，HTMX 懒加载实际内容 #}
+    <div hx-get="/tender/analysis/{{ notice.id }}"
+         hx-trigger="revealed" hx-swap="outerHTML"
+         hx-indicator="#analysis-skeleton">
+        <div id="analysis-skeleton" class="skeleton-card">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+                <div class="spinner-sm"></div>
+                <span style="font-size:14px; color: var(--text-secondary);">正在解析招标文件，提取资格要求、评分标准、注意事项...</span>
+            </div>
+            <div class="skeleton-bar w30 h20"></div>
+            <div class="skeleton-grid">
+                <div><div class="skeleton-bar w70 h14"></div><div class="skeleton-bar w90 h8"></div></div>
+                <div><div class="skeleton-bar w70 h14"></div><div class="skeleton-bar w90 h8"></div></div>
+                <div><div class="skeleton-bar w70 h14"></div><div class="skeleton-bar w90 h8"></div></div>
+            </div>
+            <div class="skeleton-bar w50 h20" style="margin-top:16px;"></div>
+            <div class="skeleton-bar w90 h8"></div>
+            <div class="skeleton-bar w90 h8"></div>
+            <div class="skeleton-bar w70 h8"></div>
+        </div>
+    </div>
+{% endif %}
+</div>
+<!-- end tender-analysis-area -->
+
 <!-- 放弃投标弹窗 -->
 <dialog id="abandon-dialog" class="abandon-dialog" aria-labelledby="abandon-title">
     <div class="abandon-dialog__header">
@@ -397,6 +449,87 @@
     // 点击遮罩关闭
     abandonDialog.addEventListener('click', (e) => {
         if (e.target === abandonDialog) abandonDialog.close();
+    });
+
+    // ---- HTMX 上传解析进度（事件驱动 + 循环步骤动画）----
+    let _stepInterval = null;
+
+    function stopStepAnimation() {
+        if (_stepInterval) { clearInterval(_stepInterval); _stepInterval = null; }
+    }
+
+    document.body.addEventListener('htmx:beforeSend', (evt) => {
+        // 只响应上传 (POST) + 目标为 tender-analysis-area 的请求
+        const isUpload = evt.detail.requestConfig?.verb === 'post'
+                      && evt.detail.requestConfig?.path?.includes('/tender/upload');
+        if (!isUpload) return;
+
+        stopStepAnimation();
+
+        // 重置所有步骤状态
+        ['step-upload','step-parse','step-match'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.classList.remove('active','done'); }
+        });
+
+        const steps = [
+            { id: 'step-upload', title: '正在上传解析文件...', desc: '接收招标文件并提取文本内容' },
+            { id: 'step-parse', title: '正在提取关键信息...', desc: '识别资格要求、评分标准、注意事项' },
+            { id: 'step-match', title: '正在智能匹配推荐...', desc: '对比公司资料，匹配资质、业绩、人员' },
+        ];
+
+        let idx = 0;
+        const advance = () => {
+            // 前一步标为完成
+            const prevIdx = (idx - 1 + steps.length) % steps.length;
+            const prev = document.getElementById(steps[prevIdx].id);
+            if (prev) { prev.classList.remove('active'); prev.classList.add('done'); }
+
+            // 当前步高亮
+            const cur = document.getElementById(steps[idx].id);
+            if (cur) { cur.classList.remove('done'); cur.classList.add('active'); }
+
+            const t = document.getElementById('overlay-title');
+            if (t) t.textContent = steps[idx].title;
+            const d = document.getElementById('overlay-desc');
+            if (d) d.textContent = steps[idx].desc;
+
+            idx = (idx + 1) % steps.length;
+        };
+
+        advance(); // 立即显示第一步
+        _stepInterval = setInterval(advance, 3000); // 每 3 秒轮转
+    });
+
+    document.body.addEventListener('htmx:afterSwap', (evt) => {
+        if (!evt.detail.target.id.includes('tender')) return;
+        stopStepAnimation();
+        // 全部标完成
+        ['step-upload','step-parse','step-match'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.classList.remove('active'); el.classList.add('done'); }
+        });
+        const t = document.getElementById('overlay-title');
+        if (t) t.textContent = '解析完成';
+        const d = document.getElementById('overlay-desc');
+        if (d) d.textContent = '正在加载分析结果...';
+    });
+
+    // HTMX 错误处理：解析失败时直接展示服务端返回的错误卡片
+    document.body.addEventListener('htmx:responseError', (evt) => {
+        const isUpload = evt.detail.requestConfig?.verb === 'post'
+                      && evt.detail.requestConfig?.path?.includes('/tender/upload');
+        if (!isUpload) return;
+        stopStepAnimation();
+        const target = document.getElementById('tender-analysis-area');
+        if (target && evt.detail.xhr.responseText) {
+            target.innerHTML = evt.detail.xhr.responseText;
+        } else if (target) {
+            target.innerHTML = `<div class="card" style="border-left: 4px solid var(--danger);">
+                <h4>❌ 解析失败</h4><p>服务器无响应，请重试</p>
+                <button class="btn btn-sm btn-outline" onclick="location.reload()">刷新重试</button>
+            </div>`;
+        }
     });
 </script>
 

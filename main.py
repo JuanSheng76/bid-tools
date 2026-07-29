@@ -10,7 +10,7 @@ from sqlalchemy import select
 from models import BidSource
 
 from auth import router as auth_router
-from routers import dashboard, notices, company, tasks, results, sources, registrations, calendar
+from routers import dashboard, notices, company, tasks, results, sources, registrations, calendar, tender
 
 
 async def scheduled_scrape_all():
@@ -75,6 +75,7 @@ app.include_router(results.router)
 app.include_router(sources.router)
 app.include_router(registrations.router)
 app.include_router(calendar.router)
+app.include_router(tender.router)
 
 # 静态文件
 app.mount("/static", StaticFiles(directory="static"), name="static")

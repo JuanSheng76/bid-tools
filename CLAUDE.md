@@ -286,13 +286,13 @@ python main.py
 
 **新增依赖**：`python-docx>=1.1`（两个 Phase 共用）
 
-### 招标文件解析（规划中）
+### 招标文件解析（已实现 ✅）
 
-> 详见 `PLAN_招标文件解析.md`，以下为摘要。
+> 详见 `PLAN_招标文件解析.md`，以下为摘要。核心实现文件：`services/tender_parser.py`、`routers/tender.py`、`templates/tender/`。
 
 - **触发时机**：决定投标（bid_decision='bid'）后，在标讯详情页上传招标文件
-- **上传方式**：网页上传 .docx / .pdf（非 CLI 脚本）
-- **解析方式**：纯规则匹配 — 章节标题关键词定位 + 表格解析 + 正则提取
+- **上传方式**：HTMX 驱动网页上传 .docx / .pdf（`hx-post` + `hx-encoding="multipart/form-data"`）
+- **解析方式**：纯规则匹配 — 章节标题关键词定位 + 表格解析 + 正则提取（所有正则在模块级预编译）
 - **提取内容**：
   - 资格要求（密封/盖章/递交要求、所需证书、承诺函、保证金）
   - 评分标准（各评分项及其分值、业绩/人员/资质要求）
@@ -303,6 +303,12 @@ python main.py
 - **新增文件**：`services/tender_parser.py`、`routers/tender.py`、`templates/tender/`
 - **新增依赖**：`python-docx>=1.1` + `pdfplumber>=0.11`
 - **路由**：`POST /tender/upload/{id}`、`GET /tender/analysis/{id}`、`GET /tender/recommend/{id}`、`POST /tender/enrich-tasks/{id}`
+
+**关键设计决策：**
+- **解析放入线程池**：`parse_tender_docx` / `parse_tender_pdf` 是纯同步函数（CPU 密集型），通过 `asyncio.to_thread()` 放入线程池执行，避免阻塞 FastAPI 事件循环。大型 PDF（100+ 页）可能耗时 30-60 秒，线程化后服务器仍可响应其他请求。
+- **HTMX 文件上传模式**：表单用 `hx-post` + `hx-encoding="multipart/form-data"`，隐藏 `<input type="file">` 通过 `onchange="this.form.requestSubmit()"` 触发提交（因为 `input.click()` 只打开文件选择器，不会触发 submit）。
+- **步骤动画轮转**：前端 overlay 的 3 步进度动画用 `setInterval` 循环轮转（每 3 秒），不提前显示"完成"——因为实际解析进度无法从服务端获取，固定步骤会在等待期间看起来像"卡死"。
+- **HTMX 错误处理**：`htmx:responseError` 事件捕获 500 错误，手动将服务端返回的 HTML 错误卡片写入目标区域（因为 HTMX 默认不 swap 非 2xx 响应）。
 
 ## 开发注意事项
 
@@ -379,3 +385,16 @@ python main.py
 - Git Bash / 终端可能使用 GBK 编码，Python print 中文可能报 `UnicodeEncodeError`
 - 解决方法：使用 `python -X utf8` 或将输出重定向到文件
 - 数据库中的中文数据不受影响（SQLite 使用 UTF-8 存储）
+
+### Jinja2 模板中的 dict 方法名陷阱 ⚠️
+- Jinja2 的 `dict.key` 语法优先查找**属性**而非键：若 key 与 dict 内置方法同名（`items`、`keys`、`values`、`get`、`update`），返回的是方法对象而非数据
+- 例如 `ta.scoring_criteria.items` 返回 `dict.items` 方法，而非 JSON 数据中 `"items"` 字段的列表
+- **必须用 `dict["items"]` 或 `dict.get("items", [])` 访问这类键名**
+- 建议：模板中涉及 JSON 数据的 `items` 键时，先用 `{% set items = data.get("items", []) %}` 设局部变量
+
+### 耗时同步操作的线程化模式
+- CPU 密集型同步操作（文档解析、大文件处理、复杂正则扫描）不应直接放在 `async def` 路由中
+- 使用 `asyncio.to_thread(sync_func, arg1, arg2, ...)` 将操作丢入线程池，释放事件循环
+- 对应的同步函数声明为普通 `def`（非 `async def`），避免误导
+- 线程中的对象访问：确保传入的数据已完全加载到内存（如 SQLAlchemy JSON 字段、标量属性），不要依赖 lazy load
+- 路由层加 `print(flush=True)` 日志，方便观察解析进度和耗时

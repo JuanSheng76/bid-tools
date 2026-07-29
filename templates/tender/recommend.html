@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}招标文件解析 - {{ notice.title }}{% endblock %}
+{% block header_title %}智能推荐{% endblock %}
+{% block content %}
+
+{% set ta = notice.tender_analysis %}
+{% set rec = ta.recommendations %}
+{% set scoring_items = ta.scoring_criteria.get("items", []) %}
+
+<div class="flex-between mb">
+    <a href="/notices/{{ notice.id }}#tender-analysis" class="btn btn-sm">← 返回标讯详情</a>
+    <span style="font-size: 13px; color: var(--text-secondary);">
+        解析文件：{{ ta.file_name }} · {{ ta.parsed_at[:19] }}
+    </span>
+</div>
+
+<!-- 标讯概览 -->
+<div class="card">
+    <h4>{{ notice.title }}</h4>
+    <div class="grid-2" style="font-size: 14px;">
+        <div>
+            <span class="text-secondary">预算金额：</span>
+            <strong>{{ '%.1f'|format(notice.budget_amount) if notice.budget_amount else '-' }} 万元</strong>
+        </div>
+        <div>
+            <span class="text-secondary">投标截止：</span>
+            <strong>{{ notice.bid_deadline.strftime('%Y-%m-%d') if notice.bid_deadline else '-' }}</strong>
+        </div>
+        <div>
+            <span class="text-secondary">评分总分：</span>
+            <strong>{{ ta.scoring_criteria.total_points }} 分</strong>
+        </div>
+        <div>
+            <span class="text-secondary">评分项数：</span>
+            <strong>{{ scoring_items|length }} 项</strong>
+        </div>
+    </div>
+</div>
+
+<!-- 评分要求摘要 -->
+{% if scoring_items %}
+<div class="card">
+    <h4>📊 评分要求</h4>
+    <div class="table-wrap">
+        <table style="width: 100%; font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>评分项</th>
+                    <th style="width: 70px;">类别</th>
+                    <th style="width: 60px; text-align: right;">满分</th>
+                    <th style="width: 250px;">分值占比</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set total = ta.scoring_criteria.total_points or 1 %}
+                {% for item in scoring_items %}
+                <tr>
+                    <td>{{ item.label }}</td>
+                    <td>
+                        {% set cat_map = {'price': '报价', 'technical': '技术', 'performance': '业绩', 'personnel': '人员', 'qualification': '资质'} %}
+                        <span class="tag">{{ cat_map.get(item.category, '其他') }}</span>
+                    </td>
+                    <td style="text-align: right; font-weight: 600;">{{ item.max_points }}</td>
+                    <td>
+                        <div style="background: #f0f0f0; height: 8px; border-radius: 4px; width: 100%;">
+                            <div style="background: var(--primary); height: 100%; border-radius: 4px;
+                                        width: {{ (item.max_points / total * 100) | int }}%;"></div>
+                        </div>
+                        <span style="font-size: 11px; color: var(--text-secondary);">{{ (item.max_points / total * 100) | int }}%</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- 推荐资质 -->
+{% if rec.qualifications %}
+<div class="card" style="border-left: 4px solid var(--primary);">
+    <h4>🏅 推荐资质（{{ rec.qualifications|length }} 项）</h4>
+    <div class="table-wrap">
+        <table style="width: 100%; font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>资质名称</th>
+                    <th>等级</th>
+                    <th>发证机构</th>
+                    <th style="width: 100px; text-align: right;">匹配度</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for q in rec.qualifications %}
+                <tr>
+                    <td><strong>{{ q.name }}</strong></td>
+                    <td>{{ q.level or '-' }}</td>
+                    <td>-</td>
+                    <td style="text-align: right;">
+                        <span style="padding: 2px 8px; border-radius: 999px; font-size: 12px;
+                                     {{ 'background: var(--success-light); color: var(--success);' if q.match_score >= 0.7
+                                        else 'background: var(--warning-light); color: var(--warning);' if q.match_score >= 0.4
+                                        else 'background: var(--danger-light); color: var(--danger);' }}">
+                            {{ (q.match_score * 100) | int }}%
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- 推荐业绩 -->
+{% if rec.performances %}
+<div class="card" style="border-left: 4px solid var(--success);">
+    <h4>📈 推荐业绩（{{ rec.performances|length }} 项，按匹配度排序）</h4>
+    <div class="table-wrap">
+        <table style="width: 100%; font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>项目名称</th>
+                    <th>客户</th>
+                    <th style="text-align: right;">合同金额(万)</th>
+                    <th>合同日期</th>
+                    <th style="width: 100px; text-align: right;">匹配度</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in rec.performances %}
+                <tr>
+                    <td><strong>{{ p.project_name }}</strong></td>
+                    <td>{{ p.client_name or '-' }}</td>
+                    <td style="text-align: right;">{{ '%.0f'|format(p.contract_amount) if p.contract_amount else '-' }}</td>
+                    <td>{{ p.contract_date or '-' }}</td>
+                    <td style="text-align: right;">
+                        <span style="padding: 2px 8px; border-radius: 999px; font-size: 12px;
+                                     {{ 'background: var(--success-light); color: var(--success);' if p.match_score >= 0.7
+                                        else 'background: var(--warning-light); color: var(--warning);' if p.match_score >= 0.4
+                                        else 'background: var(--danger-light); color: var(--danger);' }}">
+                            {{ (p.match_score * 100) | int }}%
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- 推荐人员 -->
+{% if rec.personnel %}
+<div class="card" style="border-left: 4px solid var(--warning);">
+    <h4>👤 推荐人员（{{ rec.personnel|length }} 人，按持证匹配）</h4>
+    <div class="table-wrap">
+        <table style="width: 100%; font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>姓名</th>
+                    <th>职位</th>
+                    <th>证书</th>
+                    <th style="width: 100px; text-align: right;">匹配度</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in rec.personnel %}
+                <tr>
+                    <td><strong>{{ p.name }}</strong></td>
+                    <td>{{ p.position or '-' }}</td>
+                    <td>{{ p.certifications or '-' }}</td>
+                    <td style="text-align: right;">
+                        <span style="padding: 2px 8px; border-radius: 999px; font-size: 12px;
+                                     {{ 'background: var(--success-light); color: var(--success);' if p.match_score >= 0.7
+                                        else 'background: var(--warning-light); color: var(--warning);' if p.match_score >= 0.4
+                                        else 'background: var(--danger-light); color: var(--danger);' }}">
+                            {{ (p.match_score * 100) | int }}%
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- 注意事项 -->
+{% if ta.important_notes %}
+<div class="card" style="border-left: 4px solid var(--danger);">
+    <h4>⚠️ 重要注意事项（{{ ta.important_notes|length }} 条）</h4>
+    <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
+        {% for note in ta.important_notes %}
+        <li style="margin-bottom: 6px;">
+            {{ note.text }}
+            <span class="tag tag-{{ note.priority }}" style="margin-left: 6px; font-size: 11px;">
+                {{ {'urgent': '紧急', 'high': '高优', 'medium': '中', 'low': '低'}.get(note.priority, '') }}
+            </span>
+            <span class="tag" style="margin-left: 4px; font-size: 11px;">
+                {{ {'stamp': '盖章', 'format': '格式', 'pricing': '报价', 'certs': '证书', 'qualifications': '承诺函', 'get_docs': '获取文件'}.get(note.task_type, note.task_type) }}
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+    <form method="post" action="/tender/enrich-tasks/{{ notice.id }}" class="inline-form" style="margin-top: 12px;">
+        <button type="submit" class="btn btn-primary">📥 同步到任务清单</button>
+    </form>
+</div>
+{% endif %}
+
+<!-- 无推荐内容的提示 -->
+{% if not rec.qualifications and not rec.performances and not rec.personnel %}
+<div class="empty-state">
+    <div class="empty-icon">📋</div>
+    <div class="empty-title">暂无推荐数据</div>
+    <div class="empty-desc">请先完善公司资料（资质/业绩/人员），系统才能进行智能匹配推荐</div>
+</div>
+{% endif %}
+
+{% endblock %}

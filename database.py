@@ -60,5 +60,11 @@ async def _migrate():
         conn.commit()
         print("[Migrate] 已添加 bid_notices.abandon_reason 字段")
 
+    # 添加 tender_analysis 字段
+    if "tender_analysis" not in columns:
+        conn.execute("ALTER TABLE bid_notices ADD COLUMN tender_analysis JSON")
+        conn.commit()
+        print("[Migrate] 已添加 bid_notices.tender_analysis 字段")
+
     cursor.close()
     conn.close()

@@ -1,0 +1,233 @@
+{# 招标文件分析卡片 — HTMX 局部加载 #}
+{% set ta = analysis %}
+
+{# OOB swap: 更新操作栏按钮（从上传按钮 → 查看/同步按钮） #}
+<span id="tender-op-buttons" hx-swap-oob="innerHTML">
+    <a href="/tender/recommend/{{ notice.id }}" class="btn btn-sm btn-primary">查看解析与推荐</a>
+    <form method="post" action="/tender/enrich-tasks/{{ notice.id }}" class="inline-form">
+        <button type="submit" class="btn btn-sm btn-outline">同步到任务清单</button>
+    </form>
+</span>
+
+<!-- 资格要求 -->
+<div class="card" style="border-left: 4px solid var(--primary);">
+    <h4>📋 资格要求摘要</h4>
+
+    <!-- 密封/盖章/递交 -->
+    <div class="grid-3" style="margin-bottom: 16px;">
+        <div>
+            <strong style="font-size: 13px; color: var(--text-secondary);">密封要求</strong>
+            <p style="margin: 4px 0 0; font-size: 14px;">
+                {{ ta.qualification_requirements.sealing.copies or '未特别说明' }}
+                {% if ta.qualification_requirements.sealing.packaging %}
+                <br>{{ ta.qualification_requirements.sealing.packaging }}
+                {% endif %}
+            </p>
+        </div>
+        <div>
+            <strong style="font-size: 13px; color: var(--text-secondary);">盖章要求</strong>
+            <p style="margin: 4px 0 0; font-size: 14px;">
+                {% if ta.qualification_requirements.stamping.requirements %}
+                    {{ ta.qualification_requirements.stamping.requirements | join('、') }}
+                {% else %}
+                    未特别说明
+                {% endif %}
+            </p>
+        </div>
+        <div>
+            <strong style="font-size: 13px; color: var(--text-secondary);">递交要求</strong>
+            <p style="margin: 4px 0 0; font-size: 14px;">
+                {{ ta.qualification_requirements.submission.method or '未指定方式' }}
+                {% if ta.qualification_requirements.submission.deadline %}
+                <br>截止：{{ ta.qualification_requirements.submission.deadline }}
+                {% endif %}
+                {% if ta.qualification_requirements.submission.location %}
+                <br>地点：{{ ta.qualification_requirements.submission.location[:30] }}
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <!-- 保证金 -->
+    {% set fin = ta.qualification_requirements.financial_requirements %}
+    {% if fin.bid_bond or fin.bid_bond_form %}
+    <div style="margin-bottom: 16px;">
+        <strong style="font-size: 13px; color: var(--text-secondary);">保证金</strong>
+        <p style="margin: 4px 0 0; font-size: 14px;">
+            {% if fin.bid_bond %}投标保证金：{{ '%.1f'|format(fin.bid_bond) }} 万元{% endif %}
+            {% if fin.bid_bond_form %}（{{ fin.bid_bond_form }}）{% endif %}
+            {% if fin.performance_bond %}<br>履约保证金：{{ '%.1f'|format(fin.performance_bond) }} 万元{% endif %}
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- 所需证书 -->
+    {% set certs = ta.qualification_requirements.required_certificates %}
+    {% if certs %}
+    <div style="margin-bottom: 16px;">
+        <strong style="font-size: 13px; color: var(--text-secondary);">所需证书</strong>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+            {% for cert in certs[:12] %}
+            <span style="padding: 3px 10px; border-radius: 999px; font-size: 12px;
+                         {{ 'background: var(--success-light); color: var(--success);' if cert.matched else 'background: var(--danger-light); color: var(--danger);' }}">
+                {{ '✓' if cert.matched else '✗' }} {{ cert.name }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 所需承诺函 -->
+    {% set commitments = ta.qualification_requirements.required_commitments %}
+    {% if commitments %}
+    <div>
+        <strong style="font-size: 13px; color: var(--text-secondary);">所需承诺函/声明</strong>
+        <ul style="margin: 6px 0 0; padding-left: 20px; font-size: 14px;">
+            {% for c in commitments[:10] %}
+            <li>{{ c.name }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 评分标准 -->
+<div class="card" style="border-left: 4px solid var(--warning);">
+    <h4>📊 评分标准 <span style="font-weight: normal; font-size: 13px; color: var(--text-secondary);">（总分 {{ ta.scoring_criteria.total_points }} 分）</span></h4>
+
+    {% set scoring_items = ta.scoring_criteria.get("items", []) %}
+    {% if scoring_items %}
+    <div class="table-wrap">
+        <table style="width: 100%; font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>评分项</th>
+                    <th style="width: 70px;">类别</th>
+                    <th style="width: 60px; text-align: right;">满分</th>
+                    <th style="width: 200px;">分值可视化</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set max_points = scoring_items | map(attribute='max_points') | max or 1 %}
+                {% for item in scoring_items[:15] %}
+                <tr>
+                    <td>{{ item.label }}</td>
+                    <td>
+                        {% set cat_map = {'price': '报价', 'technical': '技术', 'performance': '业绩', 'personnel': '人员', 'qualification': '资质'} %}
+                        <span class="tag">{{ cat_map.get(item.category, '其他') }}</span>
+                    </td>
+                    <td style="text-align: right; font-weight: 600;">{{ item.max_points }}</td>
+                    <td>
+                        <div style="background: #f0f0f0; height: 8px; border-radius: 4px; width: 100%;">
+                            <div style="background: var(--primary); height: 100%; border-radius: 4px;
+                                        width: {{ (item.max_points / max_points * 100) | int }}%;"></div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">未能从招标文件中解析出明确的评分标准表格</p>
+    {% endif %}
+</div>
+
+<!-- 推荐匹配摘要 -->
+{% set rec = ta.recommendations %}
+{% if rec.qualifications or rec.performances or rec.personnel %}
+<div class="card" style="border-left: 4px solid var(--success);">
+    <h4>🎯 智能推荐匹配</h4>
+    <div class="grid-3" style="font-size: 13px;">
+        {% if rec.qualifications %}
+        <div>
+            <strong style="color: var(--text-secondary);">推荐资质 Top {{ [rec.qualifications|length, 3] | min }}</strong>
+            <ol style="margin: 6px 0 0; padding-left: 18px; color: var(--text);">
+                {% for q in rec.qualifications[:3] %}
+                <li style="margin-bottom: 4px;">
+                    <strong>{{ q.name }}</strong>
+                    {% if q.level %}({{ q.level }}){% endif %}
+                    <br><span style="font-size: 12px; color: var(--text-secondary);">匹配度：{{ (q.match_score * 100) | int }}%</span>
+                </li>
+                {% endfor %}
+            </ol>
+        </div>
+        {% endif %}
+        {% if rec.performances %}
+        <div>
+            <strong style="color: var(--text-secondary);">推荐业绩 Top {{ [rec.performances|length, 3] | min }}</strong>
+            <ol style="margin: 6px 0 0; padding-left: 18px; color: var(--text);">
+                {% for p in rec.performances[:3] %}
+                <li style="margin-bottom: 4px;">
+                    <strong>{{ p.project_name[:20] }}{% if p.project_name|length > 20 %}...{% endif %}</strong>
+                    {% if p.contract_amount %}<br>¥{{ '%.0f'|format(p.contract_amount) }} 万{% endif %}
+                    <br><span style="font-size: 12px; color: var(--text-secondary);">匹配度：{{ (p.match_score * 100) | int }}%</span>
+                </li>
+                {% endfor %}
+            </ol>
+        </div>
+        {% endif %}
+        {% if rec.personnel %}
+        <div>
+            <strong style="color: var(--text-secondary);">推荐人员 Top {{ [rec.personnel|length, 3] | min }}</strong>
+            <ol style="margin: 6px 0 0; padding-left: 18px; color: var(--text);">
+                {% for p in rec.personnel[:3] %}
+                <li style="margin-bottom: 4px;">
+                    <strong>{{ p.name }}</strong>
+                    {% if p.position %}({{ p.position }}){% endif %}
+                    <br><span style="font-size: 12px; color: var(--text-secondary);">匹配度：{{ (p.match_score * 100) | int }}%</span>
+                </li>
+                {% endfor %}
+            </ol>
+        </div>
+        {% endif %}
+    </div>
+    <div style="margin-top: 12px;">
+        <a href="/tender/recommend/{{ notice.id }}" class="btn btn-sm btn-primary">查看完整推荐 →</a>
+    </div>
+</div>
+{% endif %}
+
+<!-- 重要注意事项 -->
+{% set notes = ta.important_notes %}
+{% if notes %}
+<div class="card" style="border-left: 4px solid var(--danger);">
+    <h4>⚠️ 重要注意事项</h4>
+    <ul style="margin: 0; padding-left: 20px; font-size: 14px; max-height: 300px; overflow-y: auto;">
+        {% for note in notes[:15] %}
+        <li style="margin-bottom: 6px;">
+            <span>{{ note.text }}</span>
+            <span class="tag tag-{{ note.priority }}" style="margin-left: 6px; font-size: 11px;">
+                {{ {'urgent': '紧急', 'high': '高优', 'medium': '中', 'low': '低'}.get(note.priority, '') }}
+            </span>
+        </li>
+        {% endfor %}
+        {% if notes|length > 15 %}
+        <li style="color: var(--text-secondary);">...共 {{ notes|length }} 条注意事项</li>
+        {% endif %}
+    </ul>
+    <form method="post" action="/tender/enrich-tasks/{{ notice.id }}" class="inline-form" style="margin-top: 12px;">
+        <button type="submit" class="btn btn-sm btn-outline">📥 同步到任务清单（自动映射去重）</button>
+    </form>
+</div>
+{% endif %}
+
+<!-- 解析信息 -->
+<div style="text-align: right; font-size: 12px; color: var(--text-muted); margin-top: 8px;">
+    文件：{{ ta.file_name }} · 解析时间：{{ ta.parsed_at[:19] }}
+    <!-- 重新上传（HTMX 驱动，不跳转页面） -->
+    <form hx-post="/tender/upload/{{ notice.id }}"
+          hx-encoding="multipart/form-data"
+          hx-indicator="#global-loading-overlay"
+          hx-target="#tender-analysis-area"
+          hx-swap="innerHTML"
+          class="inline-form" id="reupload-form">
+        <input type="file" name="tender_file" accept=".docx,.pdf" style="display:none"
+               id="reupload-file-input"
+               onchange="this.form.requestSubmit()">
+        <button type="button" class="btn btn-sm" style="font-size: 12px; padding: 2px 8px;"
+                onclick="document.getElementById('reupload-file-input').click()">
+            重新上传
+        </button>
+    </form>
+</div>
