@@ -7,6 +7,9 @@
 {% set obj_total = 0 %}
 {% set obj_max = 0 %}
 {% set obj_count = 0 %}
+{% set sub_total = 0 %}
+{% set sub_max = 0 %}
+{% set sub_count = 0 %}
 {% set all_max = 0 %}
 {% for item in scoring_items %}
     {% if (item.depth or 1) >= 2 %}{% set has_children = true %}{% endif %}
@@ -15,8 +18,15 @@
         {% set obj_total = obj_total + (item.get("self_assessed_score", 0) | int) %}
         {% set obj_max = obj_max + (item.max_points or 0) %}
         {% set obj_count = obj_count + 1 %}
+    {% else %}
+        {% set sub_sas = item.get("self_assessed_score", 0) | int %}
+        {% if sub_sas == 0 %}{% set sub_sas = ((item.max_points or 0) * 0.8) | int %}{% endif %}
+        {% set sub_total = sub_total + sub_sas %}
+        {% set sub_max = sub_max + (item.max_points or 0) %}
+        {% set sub_count = sub_count + 1 %}
     {% endif %}
 {% endfor %}
+{% set all_est = obj_total + sub_total %}
 
 {% if scoring_items %}
 <div class="table-wrap">
@@ -100,10 +110,11 @@
                         <span style="font-size: 12px;">/ {{ max_p }}</span>
                     </div>
                     {% else %}
-                    {# 主观分：只读 #}
-                    <span style="color: var(--text-muted); font-size: 13px;">0</span>
+                    {# 主观分：只读，显示 0.8× 预估（旧数据兜底：存储为0时自动计算） #}
+                    {% set display_sas = sas if sas > 0 else (max_p * 0.8) | int %}
+                    <span style="font-weight: 600; font-size: 14px; color: #7b1fa2;">{{ display_sas }}</span>
                     <span style="font-size: 11px; color: var(--text-muted);"> / {{ max_p }}</span>
-                    <br><span style="font-size: 10px; color: #bdbdbd;">评委主观</span>
+                    <br><span style="font-size: 10px; color: #9c27b0;">预估(×0.8)</span>
                     {% endif %}
                     {% set reason = item.get("self_assessed_reason", "") %}
                     {% if reason %}
@@ -128,10 +139,10 @@
         </tbody>
         <tfoot>
             {# 客观分合计 #}
+            {% if obj_count > 0 %}
             <tr style="border-top: 2px solid #e0e0e0; background: #fafafa;">
                 <td colspan="2" style="text-align: right; font-weight: 600; font-size: 13px;">
-                    客观分合计
-                    <span style="font-weight: 400; font-size: 11px; color: var(--text-muted);">（可预估 {{ obj_count }} 项）</span>
+                    📋 客观分预估（{{ obj_count }} 项）
                 </td>
                 <td style="text-align: right; font-weight: 600;">{{ obj_max }}</td>
                 <td style="text-align: center; font-weight: 700; font-size: 15px;
@@ -143,15 +154,32 @@
                     <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/ {{ obj_max }}（{{ otr }}%）</span>
                 </td>
             </tr>
-            {# 全部分合计（含主观满分） #}
+            {% endif %}
+            {# 主观分预估 #}
+            {% if sub_count > 0 %}
             <tr style="background: #fafafa;">
-                <td colspan="2" style="text-align: right; font-weight: 600; font-size: 13px;">招标文件总分</td>
-                <td style="text-align: right; font-weight: 700;">{{ ta.scoring_criteria.total_points }}</td>
-                <td style="text-align: center; font-size: 12px; color: var(--text-muted);">
-                    {% if ta.scoring_criteria.total_points > 0 %}
-                    {% set remaining = ta.scoring_criteria.total_points - obj_total %}
-                    预估 + 主观满分 = {{ obj_total }} + {{ remaining }} = <strong>{{ ta.scoring_criteria.total_points }}</strong>
-                    {% endif %}
+                <td colspan="2" style="text-align: right; font-weight: 600; font-size: 13px;">
+                    🎯 主观分预估（{{ sub_count }} 项，×0.8）
+                </td>
+                <td style="text-align: right; font-weight: 600;">{{ sub_max }}</td>
+                <td style="text-align: center; font-weight: 700; font-size: 15px; color: #7b1fa2;">
+                    {{ sub_total }}
+                    <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/ {{ sub_max }}</span>
+                </td>
+            </tr>
+            {% endif %}
+            {# 全部预估合计 #}
+            <tr style="border-top: 2px solid #bdbdbd; background: #f5f5f5;">
+                <td colspan="2" style="text-align: right; font-weight: 700; font-size: 14px;">全部预估合计</td>
+                <td style="text-align: right; font-weight: 700; font-size: 14px;">{{ ta.scoring_criteria.total_points }}</td>
+                <td style="text-align: center; font-weight: 700; font-size: 16px;
+                           {% set tp = ta.scoring_criteria.total_points %}
+                           {% if tp > 0 %}{% set atr = (all_est / tp * 100) | int %}{% else %}{% set atr = 0 %}{% endif %}
+                           {% if atr >= 70 %}color: #2e7d32;
+                           {% elif atr >= 40 %}color: #e65100;
+                           {% else %}color: #c62828;{% endif %}">
+                    {{ all_est }}
+                    <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/ {{ tp }}（{{ atr }}%）</span>
                 </td>
             </tr>
         </tfoot>

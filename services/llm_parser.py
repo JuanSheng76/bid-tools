@@ -79,11 +79,11 @@ SYSTEM_PROMPT = """你是一个专业的招标文件解析助手。你的任务�
         "max_points": "该项满分（数字）。depth=1的大项填写子项合计值",
         "scoring_method": "评分方法详细描述（完整原文，说明如何得分、扣分规则）",
         "requirements": ["该项对投标人的具体要求，逐条列出，不简写"],
-        "self_assessed_score": "客观分：基于公司资料逐项对比后的预估得分（数字，0~max_points）；主观分：统一填0（无法预判评委打分）",
-        "self_assessed_reason": "自评依据。客观分写清楚匹配项/缺失项/计算过程；主观分可写'评委主观打分，无法预估'"
+        "self_assessed_score": "客观分：基于公司资料逐项对比后的预估得分（数字，0~max_points）；主观分：按该项满分的80%预估（max_points × 0.8，四舍五入取整）",
+        "self_assessed_reason": "自评依据。客观分写清楚匹配项/缺失项/计算过程；主观分写'主观分，按满分80%预估'"
       }
     ],
-    "self_assessed_total": "所有客观分 self_assessed_score 的总和（数字）",
+    "self_assessed_total": "所有 self_assessed_score 的总和（数字，含客观分+主观预估）",
     "raw_text": "评分标准/评标办法相关原文段落"
   },
   "important_notes": [
@@ -206,7 +206,7 @@ SYSTEM_PROMPT = """你是一个专业的招标文件解析助手。你的任务�
    - 公司部分满足 → 按评分规则打折（如要求3个业绩只有2个，每提供1个得5分，填10/15）
    - 公司完全不满足 → 填0
    - 报价项(price)无法预知实际报价 → 填0
-2. **主观分（score_type=subjective）**：无法预判评委主观判断 → **统一填0**，不要猜测
+2. **主观分（score_type=subjective）**：按该项满分的 80% 预估（max_points × 0.8，四舍五入取整），这是基于公司具备基本能力的保守预估，实际得分取决于投标文件质量和评委判断
 3. **self_assessed_reason 必须简洁**，例如：
    - 客观分："公司持有建筑工程施工总承包一级资质，满足要求，得10/10分"
    - 客观分："公司有2个同类业绩（要求3个），按每提供1个得5分计算，预计得10/15分"
@@ -430,27 +430,22 @@ def _validate_llm_result(raw: dict) -> dict:
                 item["max_points"] = 0
             item.setdefault("scoring_method", "")
             item.setdefault("requirements", [])
-            # 自评得分：主观分强制归0
-            is_subjective = item.get("score_type") == "subjective"
-            if is_subjective:
-                item["self_assessed_score"] = 0
-            else:
-                try:
-                    sas = int(item.get("self_assessed_score", 0))
-                except (ValueError, TypeError):
-                    sas = 0
-                item["self_assessed_score"] = max(0, min(sas, item["max_points"]))
+            # 自评得分：确保是数字且在合理范围（主观分不会归零，保留 LLM 的 0.8× 预估）
+            try:
+                sas = int(item.get("self_assessed_score", 0))
+            except (ValueError, TypeError):
+                sas = 0
+            item["self_assessed_score"] = max(0, min(sas, item["max_points"]))
             item.setdefault("self_assessed_reason", "")
             items.append(item)
     scoring["items"] = items
 
-    # 修复自评总分（仅统计客观分）
+    # 修复自评总分（统计所有评分项）
     try:
         scoring["self_assessed_total"] = int(scoring.get("self_assessed_total", 0))
     except (ValueError, TypeError):
         scoring["self_assessed_total"] = sum(
             i.get("self_assessed_score", 0) for i in items
-            if i.get("score_type") == "objective"
         )
 
     scoring.setdefault("raw_text", "")

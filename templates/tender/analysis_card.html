@@ -150,15 +150,17 @@
     <h4>📊 评分标准（评标办法）
         <span style="font-weight: normal; font-size: 13px; color: var(--text-secondary);">
             （满分 {{ ta.scoring_criteria.total_points }} 分）
-            {% set obj_total = 0 %}
+            {% set all_est = 0 %}
             {% for item in ta.scoring_criteria.get("items", []) %}
-                {% if item.get("score_type", "objective") == "objective" %}
-                    {% set obj_total = obj_total + (item.get("self_assessed_score", 0) | int) %}
+                {% set s = item.get("self_assessed_score", 0) | int %}
+                {% if s == 0 and item.get("score_type", "objective") != "objective" %}
+                    {% set s = ((item.max_points or 0) * 0.8) | int %}
                 {% endif %}
+                {% set all_est = all_est + s %}
             {% endfor %}
-            {% if obj_total > 0 %}
-            · <span style="font-weight: 600; color: var(--primary);">客观分预估 {{ obj_total }} 分</span>
-            <span style="color: var(--text-muted);">（{{ (obj_total / ta.scoring_criteria.total_points * 100) | int }}%）</span>
+            {% if all_est > 0 %}
+            · <span style="font-weight: 600; color: var(--primary);">预估合计 {{ all_est }} 分</span>
+            <span style="color: var(--text-muted);">（{{ (all_est / ta.scoring_criteria.total_points * 100) | int }}%）</span>
             {% endif %}
         </span>
     </h4>

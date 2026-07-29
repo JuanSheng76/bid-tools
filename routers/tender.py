@@ -318,12 +318,11 @@ async def tender_update_score(
     new_score = max(0, min(new_score, max_points))
     item["self_assessed_score"] = new_score
 
-    # 重算客观分合计
-    obj_total = sum(
+    # 重算自评合计（含客观分 + 主观预估）
+    analysis["scoring_criteria"]["self_assessed_total"] = sum(
         i.get("self_assessed_score", 0) for i in items
-        if isinstance(i, dict) and i.get("score_type") == "objective"
+        if isinstance(i, dict)
     )
-    analysis["scoring_criteria"]["self_assessed_total"] = obj_total
 
     # 写入数据库
     notice.tender_analysis = analysis
