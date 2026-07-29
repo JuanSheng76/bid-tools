@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>清爽政企蓝 · 组件参考</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./tokens.css">
+  <style>
+    .demo-actions { display:flex; gap:9px; }
+    .demo-top-context { color:var(--ops-faint); font-size:11px; }
+    .demo-table-title { color:var(--ops-text); font-weight:600; }
+    .demo-table-sub { margin-top:3px; color:var(--ops-muted); font-size:10px; }
+    .demo-side-item { padding:14px 16px; border-bottom:1px solid var(--ops-line-soft); }
+    .demo-side-item:last-child { border-bottom:0; }
+    .demo-side-item strong { font-size:12px; }
+    .demo-side-item p { margin:5px 0 10px; color:var(--ops-muted); font-size:10px; }
+    .reference-divider {
+      display:flex; align-items:center; gap:14px; padding:28px 30px;
+      border-top:1px solid var(--ops-line); border-bottom:1px solid var(--ops-line);
+      color:var(--ops-text-soft); background:#eaf0f6; font-size:12px; font-weight:600;
+      letter-spacing:.08em;
+    }
+    .reference-divider::after { content:""; height:1px; flex:1; background:#cfd9e5; }
+    .demo-login-brand { position:relative; z-index:1; display:flex; align-items:center; gap:11px; font-weight:700; }
+    .demo-login-brand span {
+      display:grid; width:34px; height:34px; place-items:center;
+      border:1px solid rgba(255,255,255,.22); border-radius:9px;
+      color:#fff; background:rgba(255,255,255,.12); font-size:10px;
+    }
+    .demo-login-copy { position:relative; z-index:1; margin:auto 0; }
+    .demo-login-pill {
+      display:inline-flex; align-items:center; gap:8px; margin-bottom:18px; padding:6px 10px;
+      border:1px solid rgba(181,220,249,.2); border-radius:999px;
+      color:rgba(228,242,253,.82); background:rgba(255,255,255,.07); font-size:10px;
+    }
+    .demo-login-pill i {
+      width:6px; height:6px; border-radius:50%; background:#66e0ca;
+      box-shadow:0 0 0 4px rgba(102,224,202,.1),0 0 12px rgba(102,224,202,.65);
+      animation:demo-live 2.2s ease-in-out infinite;
+    }
+    .demo-login-copy .eyebrow { margin:0 0 14px; color:#a9d5f7; font-size:10px; letter-spacing:.2em; }
+    .demo-login-copy h1 { margin:0; font-size:clamp(40px,4.1vw,66px); line-height:1.1; letter-spacing:-.055em; }
+    .demo-login-copy h1 em { color:#a9d5f7; font-style:normal; }
+    .demo-login-copy p:last-child { max-width:450px; margin-top:24px; color:rgba(229,239,248,.7); line-height:1.9; }
+    .demo-login-proof { position:relative; z-index:1; display:flex; gap:12px; }
+    .demo-login-proof div {
+      min-width:132px; padding:13px 15px; border:1px solid rgba(190,221,245,.12);
+      border-radius:10px; background:rgba(255,255,255,.055); backdrop-filter:blur(9px);
+    }
+    .demo-login-proof strong { display:block; color:#94c9ef; font-size:10px; letter-spacing:.12em; }
+    .demo-login-proof span { color:rgba(229,239,248,.72); font-size:11px; }
+    .demo-auth-heading { margin-bottom:28px; }
+    .demo-auth-heading small { color:var(--ops-primary); font-weight:700; letter-spacing:.16em; }
+    .demo-auth-heading h2 { margin:10px 0 8px; font-size:31px; letter-spacing:-.04em; }
+    .demo-auth-heading p { margin:0; color:var(--ops-muted); font-size:12px; }
+    .demo-auth-form { display:grid; gap:18px; }
+    .demo-auth-submit { width:100%; margin-top:2px; }
+    .demo-auth-foot { margin:24px 0 0; color:var(--ops-faint); font-size:10px; text-align:center; }
+    @keyframes demo-live {
+      0%,100% { opacity:.65; transform:scale(.88); }
+      50% { opacity:1; transform:scale(1.08); }
+    }
+  </style>
+</head>
+<body>
+  <div class="ops-shell">
+    <aside class="ops-sidebar">
+      <div class="ops-brand">
+        <span class="ops-brand__mark">标</span>
+        <span>标策台<small>BID OPERATIONS</small></span>
+      </div>
+      <div class="ops-nav-label">工作台</div>
+      <nav class="ops-nav">
+        <a class="active" href="#">仪表盘</a>
+        <a href="#">标讯管理</a>
+        <a href="#">任务看板</a>
+        <a href="#">投标日历</a>
+      </nav>
+      <div class="ops-nav-label" style="margin-top:18px">业务管理</div>
+      <nav class="ops-nav">
+        <a href="#">报名管理</a>
+        <a href="#">结果管理</a>
+        <a href="#">公司资料</a>
+      </nav>
+    </aside>
+
+    <main class="ops-main">
+      <header class="ops-topbar">
+        <span class="demo-top-context">运营中心 / 仪表盘</span>
+        <span class="ops-caption">2026年7月29日 · 系统正常</span>
+      </header>
+
+      <div class="ops-page-head">
+        <div>
+          <h1>工作概览</h1>
+          <p>优先处理临近截止、待决策和未完成事项。</p>
+        </div>
+        <div class="demo-actions">
+          <button class="ops-btn">我的任务</button>
+          <button class="ops-btn ops-btn--primary">添加标讯</button>
+        </div>
+      </div>
+
+      <section class="ops-metrics">
+        <article class="ops-metric">
+          <div class="ops-metric__label">待处理标讯</div>
+          <div class="ops-metric__value">12</div>
+          <div class="ops-metric__foot">本周新增 3 条</div>
+        </article>
+        <article class="ops-metric">
+          <div class="ops-metric__label">进行中投标</div>
+          <div class="ops-metric__value">8</div>
+          <div class="ops-metric__foot">2 项临近截止</div>
+        </article>
+        <article class="ops-metric">
+          <div class="ops-metric__label">待完成任务</div>
+          <div class="ops-metric__value">16</div>
+          <div class="ops-metric__foot">今日到期 4 项</div>
+        </article>
+        <article class="ops-metric">
+          <div class="ops-metric__label">累计中标</div>
+          <div class="ops-metric__value">26</div>
+          <div class="ops-metric__foot">中标率 68%</div>
+        </article>
+        <article class="ops-metric">
+          <div class="ops-metric__label">本月金额</div>
+          <div class="ops-metric__value">¥428万</div>
+          <div class="ops-metric__foot">7 个有效项目</div>
+        </article>
+      </section>
+
+      <div class="ops-grid-main">
+        <section class="ops-card">
+          <header class="ops-card__head">
+            <h3>近期标讯</h3>
+            <span class="ops-caption">最近更新</span>
+          </header>
+          <table class="ops-table">
+            <thead>
+              <tr><th>项目</th><th>状态</th><th>金额</th><th>进度</th><th>截止</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="demo-table-title">区域能源运营平台升级</div><div class="demo-table-sub">华东事业部 · 数字化项目</div></td>
+                <td><span class="ops-tag">值得投</span></td>
+                <td>¥126万</td>
+                <td><div class="ops-progress"><span style="width:72%"></span></div></td>
+                <td>08/18</td>
+              </tr>
+              <tr>
+                <td><div class="demo-table-title">年度供应商服务框架</div><div class="demo-table-sub">采购管理部 · 服务项目</div></td>
+                <td><span class="ops-tag ops-tag--warning">待确认</span></td>
+                <td>¥86万</td>
+                <td><div class="ops-progress"><span style="width:45%"></span></div></td>
+                <td>08/09</td>
+              </tr>
+              <tr>
+                <td><div class="demo-table-title">数据治理一期项目</div><div class="demo-table-sub">信息中心 · 技术项目</div></td>
+                <td><span class="ops-tag ops-tag--info">进行中</span></td>
+                <td>¥216万</td>
+                <td><div class="ops-progress"><span style="width:61%"></span></div></td>
+                <td>08/26</td>
+              </tr>
+              <tr>
+                <td><div class="demo-table-title">存量系统安全整改</div><div class="demo-table-sub">安全管理部 · 整改项目</div></td>
+                <td><span class="ops-tag ops-tag--danger">已逾期</span></td>
+                <td>¥42万</td>
+                <td><div class="ops-progress"><span style="width:88%"></span></div></td>
+                <td>07/28</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="ops-card">
+          <header class="ops-card__head">
+            <h3>近期提醒</h3>
+            <span class="ops-caption">3 项待处理</span>
+          </header>
+          <div class="demo-side-item">
+            <strong>供应商材料复核</strong>
+            <p>负责人：林玥 · 今天 17:00</p>
+            <span class="ops-tag ops-tag--danger">已逾期 2 小时</span>
+          </div>
+          <div class="demo-side-item">
+            <strong>商务报价内部审批</strong>
+            <p>负责人：周启明 · 明天</p>
+            <span class="ops-tag ops-tag--warning">即将截止</span>
+          </div>
+          <div class="demo-side-item">
+            <strong>项目阶段评审</strong>
+            <p>负责人：陈昊 · 3 天后</p>
+            <span class="ops-tag ops-tag--info">已安排</span>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="reference-divider">登录页动态与层次参考</div>
+
+  <section class="ops-auth-shell">
+    <div class="ops-auth-brand">
+      <span class="ops-auth-glow ops-auth-glow--one" aria-hidden="true"></span>
+      <span class="ops-auth-glow ops-auth-glow--two" aria-hidden="true"></span>
+      <div class="demo-login-brand"><span>标</span><b>标策台 · BID OPERATIONS</b></div>
+      <div class="demo-login-copy">
+        <div class="demo-login-pill"><i></i> 投标协作工作台</div>
+        <p class="eyebrow">BID OPERATIONS PLATFORM</p>
+        <h1>让每一次投标，<br><em>都更有把握。</em></h1>
+        <p>从标讯发现、项目评估到倒排计划，把分散的投标工作收进一个清晰、可靠的工作台。</p>
+      </div>
+      <div class="demo-login-proof">
+        <div><strong>01</strong><span>标讯集中管理</span></div>
+        <div><strong>02</strong><span>团队协同推进</span></div>
+        <div><strong>03</strong><span>节点清晰可控</span></div>
+      </div>
+    </div>
+
+    <div class="ops-auth-form-panel">
+      <div class="ops-auth-card">
+        <div class="demo-auth-heading">
+          <small>WELCOME BACK</small>
+          <h2>欢迎回来</h2>
+          <p>登录你的投标工作台，继续推进项目。</p>
+        </div>
+        <form class="demo-auth-form">
+          <div class="ops-field">
+            <label for="demo-username">用户名</label>
+            <input id="demo-username" type="text" placeholder="请输入用户名">
+          </div>
+          <div class="ops-field">
+            <label for="demo-password">密码</label>
+            <input id="demo-password" type="password" placeholder="请输入密码">
+          </div>
+          <button class="ops-btn ops-btn--primary demo-auth-submit" type="button">登录工作台 →</button>
+        </form>
+        <p class="demo-auth-foot">安全登录 · 数据仅供授权团队使用</p>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

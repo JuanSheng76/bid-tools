@@ -1,40 +1,40 @@
 {% extends "base.html" %}
-{% block title %}投标日历 - 投标辅助工具{% endblock %}
+{% block title %}投标日历 - 标策台{% endblock %}
 {% block header_title %}投标日历{% endblock %}
 {% block head %}
 <style>
-    .calendar-container { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+    .calendar-container { display: grid; grid-template-columns: 1fr 320px; gap: 15px; }
     @media (max-width: 900px) { .calendar-container { grid-template-columns: 1fr; } }
 
-    .cal-card { background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; }
-    .cal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: #fafafa; border-bottom: 1px solid var(--border); }
-    .cal-header h3 { margin: 0; font-size: 18px; }
+    .cal-card { background: #fff; border-radius: var(--ops-radius-card); border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow-sm); }
+    .cal-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 17px; background: #f7f9fc; border-bottom: 1px solid var(--border); }
+    .cal-header h3 { margin: 0; color: var(--ops-text); font-size: 14px; }
     .cal-nav { display: flex; gap: 8px; }
 
     .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
-    .cal-day-header { text-align: center; padding: 10px 4px; font-size: 12px; font-weight: 600; color: var(--text-secondary); background: #fafafa; border-bottom: 1px solid var(--border); }
+    .cal-day-header { text-align: center; padding: 9px 4px; font-size: 10px; font-weight: 600; color: var(--text-secondary); background: #f7f9fc; border-bottom: 1px solid var(--border); }
     .cal-day-header.weekend { color: var(--danger); }
 
     .cal-cell { min-height: 90px; padding: 6px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); position: relative; }
     .cal-cell:nth-child(7n) { border-right: none; }
-    .cal-cell.empty { background: #fafafa; }
-    .cal-cell .day-num { font-size: 14px; font-weight: 500; margin-bottom: 4px; display: inline-block; width: 26px; height: 26px; line-height: 26px; text-align: center; border-radius: 50%; }
-    .cal-cell.today .day-num { background: var(--primary); color: #fff; }
+    .cal-cell.empty { background: #fafbfd; }
+    .cal-cell .day-num { color: var(--ops-text-soft); font-size: 11px; font-weight: 500; margin-bottom: 4px; display: inline-block; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 50%; }
+    .cal-cell.today .day-num { background: var(--primary); color: #fff; font-weight: 700; }
     .cal-cell.weekend .day-num { color: var(--danger); }
 
     .cal-cell .notice-dot { display: block; font-size: 11px; padding: 2px 5px; margin: 1px 0; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; text-decoration: none; }
-    .cal-cell .notice-dot.urgent { background: #fff2f0; color: var(--danger); font-weight: 600; }
-    .cal-cell .notice-dot.warning { background: #fff7e6; color: #d46b08; }
-    .cal-cell .notice-dot.normal { background: #e6f7ff; color: var(--primary); }
-    .cal-cell .notice-dot.overdue { background: #f5f5f5; color: #999; text-decoration: line-through; }
+    .cal-cell .notice-dot.urgent { border: 1px solid #efc8cc; background: #fff0f1; color: var(--danger); font-weight: 600; }
+    .cal-cell .notice-dot.warning { border: 1px solid #ecd7ad; background: #fff6e7; color: var(--warning); }
+    .cal-cell .notice-dot.normal { border: 1px solid #c8dcf1; background: #edf5fd; color: var(--primary); }
+    .cal-cell .notice-dot.overdue { background: #f3f5f7; color: var(--ops-faint); text-decoration: line-through; }
     .cal-cell .more-link { font-size: 11px; color: var(--text-secondary); padding: 2px 5px; }
 
-    .cal-stats { display: flex; gap: 16px; padding: 12px 20px; background: #fafafa; border-top: 1px solid var(--border); font-size: 13px; }
+    .cal-stats { display: flex; gap: 16px; padding: 12px 17px; color: var(--ops-muted); background: #f7f9fc; border-top: 1px solid var(--border); font-size: 10px; }
     .cal-stats .stat-item { display: flex; align-items: center; gap: 4px; }
     .cal-stats .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
     .upcoming-list .notice-item { display: block; padding: 10px 0; border-bottom: 1px solid var(--border); text-decoration: none; color: var(--text); }
-    .upcoming-list .notice-item:hover { background: #fafafa; margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+    .upcoming-list .notice-item:hover { background: #f6f9fc; margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
     .upcoming-list .notice-item:last-child { border-bottom: none; }
 </style>
 {% endblock %}

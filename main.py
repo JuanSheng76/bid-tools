@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     print("[Scheduler] 已停止")
 
 
-app = FastAPI(title="投标辅助工具", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="标策台", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

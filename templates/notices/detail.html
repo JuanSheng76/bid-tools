@@ -64,7 +64,7 @@
         </span>
         {% endif %}
         {% if notice.abandon_reason %}
-        <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; background: #fff3cd; color: #856404; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ notice.abandon_reason }}">
+        <span style="padding: 4px 8px; border: 1px solid #ecd7ad; border-radius: 999px; font-size: 10px; background: #fff6e7; color: #9c630b; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ notice.abandon_reason }}">
             原因：{{ notice.abandon_reason }}
         </span>
         {% endif %}
@@ -178,7 +178,7 @@
 <!-- 资质要求 -->
 <div class="card">
     <h4>资质要求</h4>
-    <div style="white-space: pre-wrap; background: #fafafa; padding: 12px; border-radius: 6px; font-size: 14px;">
+    <div style="white-space: pre-wrap; background: #f8fafc; padding: 12px; border: 1px solid var(--ops-line); border-radius: 7px; color: var(--ops-text-soft); font-size: 11px;">
         {{ notice.qualification_requirements or '未指定' }}
     </div>
 </div>
@@ -384,11 +384,12 @@
 <style>
     .abandon-dialog {
         width: min(480px, calc(100vw - 40px));
-        border: 0; border-radius: 16px; padding: 0;
-        box-shadow: 0 24px 70px rgba(15,23,42,.28);
+        border: 1px solid var(--ops-line); border-radius: 13px; padding: 0;
+        color: var(--ops-text); background: #fff;
+        box-shadow: var(--shadow-lg);
     }
     .abandon-dialog::backdrop {
-        background: rgba(15,23,42,.48); backdrop-filter: blur(2px);
+        background: rgba(19,37,57,.48); backdrop-filter: blur(2px);
     }
     .abandon-dialog__header {
         padding: 22px 24px 16px; border-bottom: 1px solid var(--border);
@@ -402,7 +403,7 @@
         display: inline-block; padding: 6px 14px; border: 1px solid var(--border);
         border-radius: 999px; font-size: 13px; color: var(--text-secondary);
         cursor: pointer; transition: all var(--transition);
-        background: #fff; user-select: none;
+        background: #f7f9fc; user-select: none;
     }
     .abandon-preset:hover {
         color: var(--danger); border-color: var(--danger);

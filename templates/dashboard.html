@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}仪表盘 - 投标辅助工具{% endblock %}
+{% block title %}仪表盘 - 标策台{% endblock %}
 {% block header_title %}仪表盘{% endblock %}
 {% block content %}
 
@@ -89,9 +89,72 @@
     </div>
 
     <!-- 月度统计图表 -->
-    <div class="card">
-        <h3 style="margin: 0 0 12px 0;">近12个月投标趋势</h3>
-        <canvas id="monthlyChart" style="max-height: 260px;"></canvas>
+    <div class="card dashboard-chart-card">
+        <div class="dashboard-chart-head">
+            <div>
+                <h3>近12个月投标结果</h3>
+                <p>按月统计，参考周均 2–3 次投标频次</p>
+            </div>
+            <div class="dashboard-chart-actions">
+                <div class="dashboard-view-switch" role="group" aria-label="切换统计视图">
+                    <button type="button" class="dashboard-view-toggle active"
+                            data-dashboard-view="chart" aria-pressed="true">趋势图</button>
+                    <button type="button" class="dashboard-view-toggle"
+                            data-dashboard-view="funnel" aria-pressed="false">转化漏斗</button>
+                </div>
+                <a href="/results" class="dashboard-chart-link">明细 →</a>
+            </div>
+        </div>
+
+        <div class="dashboard-view-panel" data-dashboard-panel="chart">
+            <div class="dashboard-chart-summary">
+                <span><small>结果总数</small><strong>{{ chart_data.period_total }}</strong></span>
+                <span><small>中标项目</small><strong>{{ chart_data.period_wins }}</strong></span>
+                <span><small>未中标项目</small><strong>{{ chart_data.period_lost }}</strong></span>
+                <span><small>最活跃月份</small><strong>{{ chart_data.busiest_month }}</strong></span>
+            </div>
+            <div class="dashboard-chart-wrap">
+                <canvas id="monthlyChart" aria-label="近12个月投标结果构成及中标项目图表" role="img"></canvas>
+            </div>
+        </div>
+
+        <div class="dashboard-view-panel dashboard-funnel-panel"
+             data-dashboard-panel="funnel" hidden>
+            <div class="compact-funnel" aria-label="投标转化阶段">
+                <article class="compact-funnel-stage compact-funnel-stage--source"
+                         style="--stage-width: 100%;">
+                    <span>获取标讯</span>
+                    <strong>{{ funnel_data.total }}</strong>
+                </article>
+                <div class="compact-funnel-rate">
+                    <i></i><span><em>确定投标</em><strong>{{ funnel_data.confirmed_rate }}%</strong></span>
+                </div>
+                <article class="compact-funnel-stage compact-funnel-stage--confirmed"
+                         style="--stage-width: {{ funnel_data.confirmed_width }}%;">
+                    <span>确定投标</span>
+                    <strong>{{ funnel_data.confirmed }}</strong>
+                </article>
+                <div class="compact-funnel-rate">
+                    <i></i><span><em>完成投标</em><strong>{{ funnel_data.completion_rate }}%</strong></span>
+                </div>
+                <article class="compact-funnel-stage compact-funnel-stage--completed"
+                         style="--stage-width: {{ funnel_data.completed_width }}%;">
+                    <span>完成投标</span>
+                    <strong>{{ funnel_data.completed }}</strong>
+                </article>
+                <div class="compact-funnel-rate">
+                    <i></i><span><em>中标转化</em><strong>{{ funnel_data.won_share }}%</strong></span>
+                </div>
+                <article class="compact-funnel-stage compact-funnel-stage--won"
+                         style="--stage-width: {{ funnel_data.won_width }}%;">
+                    <span>中标</span>
+                    <strong>{{ funnel_data.won }}</strong>
+                </article>
+            </div>
+            <p class="compact-funnel-foot">
+                未中标 {{ funnel_data.lost }} 条、废标/流标 {{ funnel_data.other }} 条，不纳入漏斗环节
+            </p>
+        </div>
     </div>
 </div>
 
@@ -214,15 +277,71 @@ document.addEventListener('DOMContentLoaded', function() {
         requestAnimationFrame(update);
     });
 
-    const ctx = document.getElementById('monthlyChart').getContext('2d');
-    const gradientWon = ctx.createLinearGradient(0, 0, 0, 260);
-    gradientWon.addColorStop(0, 'rgba(16, 185, 129, 0.7)');
-    gradientWon.addColorStop(1, 'rgba(16, 185, 129, 0.05)');
-    const gradientLost = ctx.createLinearGradient(0, 0, 0, 260);
-    gradientLost.addColorStop(0, 'rgba(239, 68, 68, 0.6)');
-    gradientLost.addColorStop(1, 'rgba(239, 68, 68, 0.03)');
+    const canvas = document.getElementById('monthlyChart');
+    const ctx = canvas.getContext('2d');
+    const monthlyTotals = {{ chart_data.total | tojson }};
+    const wonProjectNames = {{ chart_data.won_projects | tojson }};
 
-    new Chart(ctx, {
+    function compactProjectLabel(names) {
+        if (!names || names.length === 0) return '';
+        let label = names[0]
+            .replace(/项目|服务|采购|检测/g, '')
+            .trim();
+        if (label.length > 9) label = label.slice(0, 9) + '…';
+        if (names.length > 1) label += ' 等' + names.length + '项';
+        return label;
+    }
+
+    const wonProjectLabelsPlugin = {
+        id: 'wonProjectLabels',
+        afterDatasetsDraw(chart) {
+            const wonIndex = chart.data.datasets.findIndex(dataset => dataset.isWon);
+            if (wonIndex < 0) return;
+
+            const meta = chart.getDatasetMeta(wonIndex);
+            const yScale = chart.scales.y;
+            const { ctx, chartArea } = chart;
+            ctx.save();
+            ctx.font = '500 9px "DM Sans", "Noto Sans SC", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            meta.data.forEach((bar, index) => {
+                const names = wonProjectNames[index] || [];
+                if (!names.length || !monthlyTotals[index]) return;
+
+                const label = compactProjectLabel(names);
+                const totalY = yScale.getPixelForValue(monthlyTotals[index]);
+                const labelWidth = Math.min(ctx.measureText(label).width + 10, 94);
+                const centerX = Math.min(
+                    Math.max(bar.x, chartArea.left + labelWidth / 2),
+                    chartArea.right - labelWidth / 2
+                );
+                const labelBottom = Math.max(chartArea.top + 18, totalY - 7);
+                const boxTop = labelBottom - 16;
+
+                ctx.strokeStyle = 'rgba(45, 155, 135, .38)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(bar.x, totalY - 2);
+                ctx.lineTo(bar.x, labelBottom + 1);
+                ctx.stroke();
+
+                ctx.fillStyle = 'rgba(240, 249, 247, .96)';
+                ctx.strokeStyle = 'rgba(45, 155, 135, .24)';
+                ctx.beginPath();
+                ctx.roundRect(centerX - labelWidth / 2, boxTop, labelWidth, 15, 4);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#247c6d';
+                ctx.fillText(label, centerX, boxTop + 7.5, labelWidth - 8);
+            });
+            ctx.restore();
+        }
+    };
+
+    const monthlyChart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: {{ chart_data.labels | tojson }},
@@ -230,44 +349,155 @@ document.addEventListener('DOMContentLoaded', function() {
                 {
                     label: '中标',
                     data: {{ chart_data.won | tojson }},
-                    backgroundColor: gradientWon,
-                    borderColor: '#10b981',
-                    borderWidth: 1,
-                    borderRadius: 6,
+                    backgroundColor: '#2d9b87',
+                    borderColor: '#2d9b87',
+                    borderWidth: 0,
+                    borderRadius: 3,
                     borderSkipped: false,
+                    stack: 'results',
+                    isWon: true,
+                    barThickness: 10,
+                    maxBarThickness: 12,
                 },
                 {
                     label: '未中标',
                     data: {{ chart_data.lost | tojson }},
-                    backgroundColor: gradientLost,
-                    borderColor: '#ef4444',
-                    borderWidth: 1,
-                    borderRadius: 6,
+                    backgroundColor: '#d76a73',
+                    borderColor: '#d76a73',
+                    borderWidth: 0,
+                    borderRadius: 3,
                     borderSkipped: false,
+                    stack: 'results',
+                    barThickness: 10,
+                    maxBarThickness: 12,
+                },
+                {
+                    label: '废标',
+                    data: {{ chart_data.rejected | tojson }},
+                    backgroundColor: '#d9a33b',
+                    borderColor: '#d9a33b',
+                    borderWidth: 0,
+                    borderRadius: 3,
+                    borderSkipped: false,
+                    stack: 'results',
+                    barThickness: 10,
+                    maxBarThickness: 12,
+                },
+                {
+                    label: '流标',
+                    data: {{ chart_data.cancelled | tojson }},
+                    backgroundColor: '#9aa8b8',
+                    borderColor: '#9aa8b8',
+                    borderWidth: 0,
+                    borderRadius: 3,
+                    borderSkipped: false,
+                    stack: 'results',
+                    barThickness: 10,
+                    maxBarThickness: 12,
                 }
             ]
         },
+        plugins: [wonProjectLabelsPlugin],
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: { top: 24 }
+            },
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: { usePointStyle: true, pointStyleWidth: 8, padding: 20, font: { size: 13 } }
+                    labels: {
+                        color: '#607287',
+                        usePointStyle: true,
+                        pointStyleWidth: 8,
+                        boxWidth: 8,
+                        boxHeight: 8,
+                        padding: 16,
+                        font: { size: 10, family: '"DM Sans", "Noto Sans SC", sans-serif' }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: '#182638',
+                    titleColor: '#fff',
+                    bodyColor: '#dce7f1',
+                    padding: 12,
+                    cornerRadius: 8,
+                    displayColors: true,
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + '：' + context.raw + ' 项';
+                        },
+                        afterLabel: function(context) {
+                            if (!context.dataset.isWon) return '';
+                            const names = wonProjectNames[context.dataIndex] || [];
+                            return names.map(name => '中标项目：' + name);
+                        },
+                        footer: function(items) {
+                            const index = items[0].dataIndex;
+                            return '结果合计：' + monthlyTotals[index] + ' 项';
+                        }
+                    }
                 }
             },
             scales: {
                 x: {
+                    stacked: true,
                     grid: { display: false },
-                    ticks: { font: { size: 11 }, color: '#94a3b8' }
+                    border: { display: false },
+                    ticks: {
+                        font: { size: 9 },
+                        color: '#728399',
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 6,
+                    }
                 },
                 y: {
                     beginAtZero: true,
-                    ticks: { stepSize: 1, font: { size: 11 }, color: '#94a3b8' },
-                    grid: { color: '#f1f5f9' }
+                    stacked: true,
+                    suggestedMax: {{ chart_data.count_axis_max }},
+                    title: {
+                        display: true,
+                        text: '项目数',
+                        color: '#8998a9',
+                        font: { size: 9, weight: 'normal' },
+                    },
+                    ticks: {
+                        stepSize: {{ chart_data.count_axis_step }},
+                        precision: 0,
+                        font: { size: 9 },
+                        color: '#728399',
+                        callback: value => Number.isInteger(value) ? value : null,
+                    },
+                    grid: { color: '#edf1f5', drawTicks: false },
+                    border: { display: false },
                 }
             }
         }
+    });
+
+    const viewButtons = document.querySelectorAll('[data-dashboard-view]');
+    const viewPanels = document.querySelectorAll('[data-dashboard-panel]');
+    viewButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const target = button.dataset.dashboardView;
+            viewButtons.forEach(item => {
+                const active = item === button;
+                item.classList.toggle('active', active);
+                item.setAttribute('aria-pressed', String(active));
+            });
+            viewPanels.forEach(panel => {
+                panel.hidden = panel.dataset.dashboardPanel !== target;
+            });
+            if (target === 'chart') {
+                requestAnimationFrame(() => monthlyChart.resize());
+            }
+        });
     });
 });
 </script>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}任务看板 - 投标辅助工具{% endblock %}
+{% block title %}任务看板 - 标策台{% endblock %}
 {% block header_title %}任务看板{% endblock %}
 
 {% macro task_card(t, done=false) %}
@@ -97,7 +97,8 @@
     <section class="kanban-col">
         <h3>
             <span>已完成 <span class="count">{{ done|length }}</span></span>
-            <button type="button" class="completed-toggle" data-collapse-column>收起</button>
+            <button type="button" class="completed-toggle" data-collapse-column
+                    aria-expanded="true" aria-label="收起已完成任务">收起</button>
         </h3>
         <div class="sortable-list" data-status="done">
             {% for t in done %}{{ task_card(t, true) }}{% else %}

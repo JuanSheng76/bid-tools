@@ -5,6 +5,7 @@ from io import BytesIO
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from templates_config import templates
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import BidResult, BidNotice
@@ -35,7 +36,7 @@ async def result_list(
     if not session:
         return RedirectResponse(url="/login")
 
-    query = select(BidResult)
+    query = select(BidResult).options(selectinload(BidResult.notice))
     count_query = select(func.count(BidResult.id))
 
     if result_filter:
@@ -64,7 +65,7 @@ async def result_list(
     from datetime import timedelta
     soon = datetime.utcnow() + timedelta(days=30)
     expiring = (await db.execute(
-        select(BidResult).where(
+        select(BidResult).options(selectinload(BidResult.notice)).where(
             BidResult.contract_expiry_date.isnot(None),
             BidResult.contract_expiry_date <= soon,
             BidResult.contract_expiry_date >= datetime.utcnow(),
@@ -193,7 +194,7 @@ async def results_export_excel(
     if not session:
         return RedirectResponse(url="/login")
 
-    query = select(BidResult)
+    query = select(BidResult).options(selectinload(BidResult.notice))
     if result_filter:
         query = query.where(BidResult.result == result_filter)
     results_list = (await db.execute(
@@ -227,6 +228,16 @@ async def results_export_excel(
             r.loss_reason or "",
             r.notes or "",
         ])
+
+    from services.excel_export import style_export_sheet
+    style_export_sheet(
+        ws,
+        {
+            "A": 44, "B": 13, "C": 10, "D": 16, "E": 11, "F": 28,
+            "G": 16, "H": 15, "I": 15, "J": 16, "K": 34, "L": 36,
+        },
+        {"D": '#,##0.00" 万元"', "G": '#,##0.00" 万元"', "J": '#,##0.00" 万元"'},
+    )
 
     output = BytesIO()
     wb.save(output)

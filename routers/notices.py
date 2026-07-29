@@ -420,6 +420,21 @@ async def notices_export_excel(
             "是" if n.platform_registration_required else "否",
         ])
 
+    from services.excel_export import style_export_sheet
+    style_export_sheet(
+        ws,
+        {
+            "A": 46, "B": 34, "C": 13, "D": 18, "E": 18,
+            "F": 18, "G": 15, "H": 13, "I": 15, "J": 14,
+            "K": 12, "L": 16, "M": 24, "N": 12, "O": 18,
+        },
+        {
+            "G": '#,##0.00" 万元"',
+            "H": '#,##0.00" 元"',
+            "I": '#,##0.00" 万元"',
+        },
+    )
+
     output = BytesIO()
     wb.save(output)
     output.seek(0)

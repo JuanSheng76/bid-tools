@@ -1,5 +1,5 @@
 /**
- * 投标辅助工具 - 客户端交互逻辑
+ * 标策台 - 客户端交互逻辑
  */
 
 // ====== Toast 提示 ======
@@ -207,6 +207,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const column = button.closest('.kanban-col');
             const collapsed = column.classList.toggle('is-collapsed');
             button.textContent = collapsed ? '展开' : '收起';
+            button.setAttribute('aria-expanded', String(!collapsed));
+            button.setAttribute('aria-label', collapsed ? '展开已完成任务' : '收起已完成任务');
         });
     });
 

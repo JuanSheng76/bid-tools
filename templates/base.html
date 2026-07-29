@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}投标辅助工具{% endblock %}</title>
+    <title>{% block title %}标策台{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@2/dist/htmx.min.js"></script>
     <style>
@@ -421,7 +421,10 @@
 <body>
     {% if session %}
     <aside class="sidebar">
-        <div class="logo"><span class="logo-mark">BT</span><span class="logo-text">Bid Tools</span></div>
+        <div class="logo">
+            <span class="logo-mark">标</span>
+            <span class="logo-copy"><span class="logo-text">标策台</span><small>BID OPERATIONS</small></span>
+        </div>
         <nav>
             <div class="sidebar-section-label">工作台</div>
             <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">

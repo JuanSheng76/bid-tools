@@ -2,7 +2,7 @@
 from datetime import datetime
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
@@ -59,6 +59,7 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
 
     # 图表数据：近12个月中标/未中标趋势
     chart_data = await _get_monthly_stats(db)
+    funnel_data = await _get_bid_funnel(db)
 
     # 中标率
     total_decided = (await db.execute(
@@ -80,56 +81,149 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         "users": users,
         "reminders": reminders,
         "chart_data": chart_data,
+        "funnel_data": funnel_data,
     })
 
 
+async def _get_bid_funnel(db: AsyncSession) -> dict:
+    """统计从获取标讯到投标结果的转化漏斗。"""
+
+    total_notices = (await db.execute(
+        select(func.count(BidNotice.id))
+    )).scalar() or 0
+
+    # 已有结果的历史数据必然经过“确定投标”，兼容旧数据未记录 bid_decision 的情况。
+    confirmed_bids = (await db.execute(
+        select(func.count(func.distinct(BidNotice.id)))
+        .outerjoin(BidResult, BidResult.notice_id == BidNotice.id)
+        .where(or_(
+            BidNotice.bid_decision == "bid",
+            BidResult.id.isnot(None),
+        ))
+    )).scalar() or 0
+
+    result_rows = (await db.execute(
+        select(BidResult.result, func.count(BidResult.id))
+        .group_by(BidResult.result)
+    )).all()
+    result_counts = {result: count for result, count in result_rows}
+
+    completed_bids = sum(result_counts.values())
+    lost_bids = result_counts.get("lost", 0)
+    won_bids = result_counts.get("won", 0)
+    other_results = (
+        result_counts.get("rejected", 0)
+        + result_counts.get("cancelled", 0)
+    )
+
+    def percentage(value: int, total: int) -> float:
+        return round(value / total * 100, 1) if total else 0
+
+    return {
+        "total": total_notices,
+        "confirmed": confirmed_bids,
+        "completed": completed_bids,
+        "lost": lost_bids,
+        "won": won_bids,
+        "other": other_results,
+        "confirmed_rate": percentage(confirmed_bids, total_notices),
+        "completion_rate": percentage(completed_bids, confirmed_bids),
+        "lost_share": percentage(lost_bids, completed_bids),
+        "won_share": percentage(won_bids, completed_bids),
+        "won_overall_rate": percentage(won_bids, total_notices),
+        "confirmed_width": max(
+            58, percentage(confirmed_bids, total_notices)
+        ),
+        "completed_width": max(
+            44, percentage(completed_bids, total_notices)
+        ),
+        "won_width": max(
+            30, percentage(won_bids, total_notices)
+        ),
+    }
+
+
 async def _get_monthly_stats(db: AsyncSession) -> dict:
-    """获取近12个月中标/未中标月度统计（用于 Chart.js）"""
-    from datetime import timedelta
-    import json
+    """获取近12个自然月的结果构成及中标项目名称（用于 Chart.js）。"""
 
     now = datetime.utcnow()
     labels = []
     won_data = []
     lost_data = []
+    rejected_data = []
+    cancelled_data = []
+    total_data = []
+    won_projects = []
 
-    for i in range(11, -1, -1):
-        month_start = datetime(now.year, now.month, 1) - timedelta(days=i * 30)
-        # 规范化到当月1号
-        month_start = datetime(month_start.year, month_start.month, 1)
-        if i == 0:
-            month_end = now
-        else:
-            if month_start.month == 12:
-                month_end = datetime(month_start.year + 1, 1, 1)
-            else:
-                month_end = datetime(month_start.year, month_start.month + 1, 1)
+    def month_start_with_offset(offset: int) -> datetime:
+        """以当前月为 0，精确移动自然月，避免按 30 天倒推造成月份重复。"""
+        month_index = now.year * 12 + (now.month - 1) + offset
+        year, zero_based_month = divmod(month_index, 12)
+        return datetime(year, zero_based_month + 1, 1)
 
-        labels.append(month_start.strftime("%Y-%m"))
+    for offset in range(-11, 1):
+        month_start = month_start_with_offset(offset)
+        month_end = now if offset == 0 else month_start_with_offset(offset + 1)
 
-        won_count = (await db.execute(
-            select(func.count()).where(
+        labels.append(month_start.strftime("%y年%m月"))
+
+        monthly_rows = (await db.execute(
+            select(BidResult.result, func.count(BidResult.id))
+            .where(
+                BidResult.created_at >= month_start,
+                BidResult.created_at < month_end,
+            )
+            .group_by(BidResult.result)
+        )).all()
+        counts = {result: count for result, count in monthly_rows}
+        monthly_won_projects = (await db.execute(
+            select(BidNotice.title)
+            .join(BidResult, BidResult.notice_id == BidNotice.id)
+            .where(
                 BidResult.result == "won",
                 BidResult.created_at >= month_start,
                 BidResult.created_at < month_end,
             )
-        )).scalar() or 0
+            .order_by(BidResult.opening_date.asc())
+        )).scalars().all()
 
-        lost_count = (await db.execute(
-            select(func.count()).where(
-                BidResult.result == "lost",
-                BidResult.created_at >= month_start,
-                BidResult.created_at < month_end,
-            )
-        )).scalar() or 0
+        won_count = counts.get("won", 0)
+        lost_count = counts.get("lost", 0)
+        rejected_count = counts.get("rejected", 0)
+        cancelled_count = counts.get("cancelled", 0)
+        total_count = won_count + lost_count + rejected_count + cancelled_count
 
         won_data.append(won_count)
         lost_data.append(lost_count)
+        rejected_data.append(rejected_count)
+        cancelled_data.append(cancelled_count)
+        total_data.append(total_count)
+        won_projects.append(monthly_won_projects)
+
+    period_total = sum(total_data)
+    period_wins = sum(won_data)
+    period_lost = sum(lost_data)
+    busiest_index = total_data.index(max(total_data)) if period_total else None
+    observed_max = max(total_data, default=0)
+    # 常规投标频次约每周 2–3 次，月度纵轴以 12 项作为基础容量。
+    count_axis_max = max(12, ((observed_max + 1) // 2) * 2)
+    count_axis_step = max(2, (count_axis_max + 5) // 6)
 
     return {
         "labels": labels,
         "won": won_data,
         "lost": lost_data,
+        "rejected": rejected_data,
+        "cancelled": cancelled_data,
+        "total": total_data,
+        "won_projects": won_projects,
+        "period_total": period_total,
+        "period_wins": period_wins,
+        "period_lost": period_lost,
+        "busiest_month": labels[busiest_index] if busiest_index is not None else "-",
+        "busiest_count": total_data[busiest_index] if busiest_index is not None else 0,
+        "count_axis_max": count_axis_max,
+        "count_axis_step": count_axis_step,
     }
 
 
