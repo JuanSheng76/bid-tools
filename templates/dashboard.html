@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - 投标辅助工具{% endblock %}
+{% block header_title %}仪表盘{% endblock %}
+{% block content %}
+
+<div class="page-toolbar">
+    <div>
+        <h2>工作概览</h2>
+        <p>优先处理临近截止、待决策和未完成事项。</p>
+    </div>
+    <div class="toolbar-actions">
+        <a href="/notices/new" class="btn btn-primary">+ 添加标讯</a>
+        <a href="/tasks?mine=true" class="btn">我的任务</a>
+        <a href="/results" class="btn">记录结果</a>
+    </div>
+</div>
+
+<!-- 统计卡片 -->
+<div class="stat-cards">
+    <a class="stat-card-link" href="/notices?view=attention">
+    <div class="stat-card">
+        <div class="stat-icon metric-icon metric-icon--notice" aria-hidden="true">01</div>
+        <div class="num" data-count="{{ new_notices }}">0</div>
+        <div class="label">待处理标讯</div>
+        <div class="stat-hint">查看并评估 →</div>
+    </div>
+    </a>
+    <a class="stat-card-link" href="/notices?decision=bid">
+    <div class="stat-card">
+        <div class="stat-icon metric-icon metric-icon--bid" aria-hidden="true">02</div>
+        <div class="num" data-count="{{ active_bids }}">0</div>
+        <div class="label">进行中投标</div>
+        <div class="stat-hint">进入项目列表 →</div>
+    </div>
+    </a>
+    <a class="stat-card-link" href="/tasks?mine=true">
+    <div class="stat-card">
+        <div class="stat-icon metric-icon metric-icon--task" aria-hidden="true">03</div>
+        <div class="num" data-count="{{ urgent_tasks }}">0</div>
+        <div class="label">待完成任务</div>
+        <div class="stat-hint">处理我的任务 →</div>
+    </div>
+    </a>
+    <a class="stat-card-link" href="/results">
+    <div class="stat-card">
+        <div class="stat-icon metric-icon metric-icon--win" aria-hidden="true">04</div>
+        <div class="num" data-count="{{ total_wins }}">0</div>
+        <div class="label">累计中标 <small>({{ win_rate }}% 中标率)</small></div>
+        <div class="stat-hint">查看结果分析 →</div>
+    </div>
+    </a>
+</div>
+
+<div class="grid-2">
+    <!-- 提醒面板 -->
+    <div class="card">
+        <div class="flex-between mb">
+            <h3 style="margin: 0;">近期提醒 <span class="section-kicker">7天内</span></h3>
+            {% if reminders %}<span class="badge badge-bidding">{{ reminders|length }}条</span>{% endif %}
+        </div>
+        {% if reminders %}
+        {% for r in reminders[:10] %}
+        <div class="flex-between" style="padding: 8px 0; border-bottom: 1px solid var(--border);">
+            <div>
+                <a href="{{ r.url }}">
+                    <span class="row-marker" aria-hidden="true"></span>
+                    {{ r.title[:35] }}{% if r.title|length > 35 %}...{% endif %}
+                </a>
+                {% if r.type == 'task_due' and r.notice_title %}
+                <br><small class="text-secondary" style="font-size: 12px;">
+                    标讯：<a href="/notices/{{ r.notice_id }}" style="color: var(--primary);">{{ r.notice_title[:28] }}{% if r.notice_title|length > 28 %}...{% endif %}</a>
+                </small>
+                {% else %}
+                <br><small class="text-secondary">
+                    {{ r.date.strftime('%Y-%m-%d') if r.date else '-' }}
+                </small>
+                {% endif %}
+            </div>
+            <span class="badge {{ 'badge-not-worth' if r.days_left < 3 else 'badge-bidding' }}">
+                {{ r.days_left }}天
+            </span>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div style="text-align: center; padding: 30px; color: var(--text-secondary);">
+            暂无紧急提醒
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 月度统计图表 -->
+    <div class="card">
+        <h3 style="margin: 0 0 12px 0;">近12个月投标趋势</h3>
+        <canvas id="monthlyChart" style="max-height: 260px;"></canvas>
+    </div>
+</div>
+
+<!-- 近期标讯 -->
+<div class="flex-between mb">
+    <h3>近期标讯</h3>
+    <div class="flex-row">
+        <a href="/notices/export/excel" class="btn btn-sm btn-success">导出标讯</a>
+        <a href="/notices" class="btn btn-sm">查看全部 →</a>
+    </div>
+</div>
+
+<div class="card" style="padding: 0;">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>标题</th>
+                    <th>投标截止</th>
+                    <th>预算(万元)</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for n in recent_notices %}
+                <tr>
+                    <td><a href="/notices/{{ n.id }}">{{ n.title[:50] }}{% if n.title|length > 50 %}...{% endif %}</a></td>
+                    <td>{{ n.bid_deadline.strftime('%Y-%m-%d') if n.bid_deadline else '-' }}</td>
+                    <td>{{ n.budget_amount if n.budget_amount else '-' }}</td>
+                    <td>
+                        {% if n.status == 'new' %}<span class="badge badge-new">待处理</span>
+                        {% elif n.status == 'assessing' %}<span class="badge badge-assessing">评估中</span>
+                        {% elif n.status == 'worth' %}<span class="badge badge-worth">值得投</span>
+                        {% elif n.status == 'not_worth' %}<span class="badge badge-not-worth">不推荐</span>
+                        {% elif n.status == 'registered' %}<span class="badge badge-registered">已报名</span>
+                        {% elif n.status == 'bidding' %}<span class="badge badge-bidding">投标中</span>
+                        {% elif n.status == 'completed' %}<span class="badge badge-completed">已完成</span>
+                        {% elif n.status == 'ignored' %}<span class="badge badge-ignored">已忽略</span>
+                        {% else %}<span class="badge">{{ n.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="/notices/{{ n.id }}" class="btn btn-sm">详情</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5">
+                    <div class="empty-state" style="padding: 40px 20px;">
+                        <div class="empty-icon empty-icon--notice"></div>
+                        <div class="empty-desc">还没有标讯，<a href="/notices/new">点击添加第一条</a></div>
+                    </div>
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 待办任务 -->
+<div class="flex-between mb">
+    <h3>待办任务</h3>
+    <a href="/tasks" class="btn btn-sm">任务看板 →</a>
+</div>
+
+<div class="card" style="padding: 0;">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>任务</th>
+                    <th>关联标讯</th>
+                    <th>负责人</th>
+                    <th>截止日期</th>
+                    <th>状态</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in upcoming_tasks %}
+                <tr>
+                    <td><a href="/tasks/{{ t.id }}">{{ t.title }}</a></td>
+                    <td><a href="/notices/{{ t.notice_id }}">{{ t.notice.title[:30] if t.notice else '-' }}</a></td>
+                    <td>{{ t.assignee.full_name if t.assignee else '未分配' }}</td>
+                    <td>{{ t.planned_end.strftime('%Y-%m-%d') if t.planned_end else '-' }}</td>
+                    <td>
+                        {% if t.status == 'todo' %}<span class="badge badge-new">待开始</span>
+                        {% elif t.status == 'in_progress' %}<span class="badge badge-bidding">进行中</span>
+                        {% elif t.status == 'done' %}<span class="badge badge-worth">已完成</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5">
+                    <div class="empty-state" style="padding: 40px 20px;">
+                        <div class="empty-icon empty-icon--task"></div>
+                        <div class="empty-desc">没有待办任务，去<a href="/tasks">任务看板</a>看看</div>
+                    </div>
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if chart_data %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 计数动画
+    document.querySelectorAll('.stat-card .num[data-count]').forEach(el => {
+        const target = parseInt(el.dataset.count) || 0;
+        const duration = 800;
+        const startTime = performance.now();
+        function update(now) {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            el.textContent = Math.round(target * eased);
+            if (progress < 1) requestAnimationFrame(update);
+        }
+        requestAnimationFrame(update);
+    });
+
+    const ctx = document.getElementById('monthlyChart').getContext('2d');
+    const gradientWon = ctx.createLinearGradient(0, 0, 0, 260);
+    gradientWon.addColorStop(0, 'rgba(16, 185, 129, 0.7)');
+    gradientWon.addColorStop(1, 'rgba(16, 185, 129, 0.05)');
+    const gradientLost = ctx.createLinearGradient(0, 0, 0, 260);
+    gradientLost.addColorStop(0, 'rgba(239, 68, 68, 0.6)');
+    gradientLost.addColorStop(1, 'rgba(239, 68, 68, 0.03)');
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: {{ chart_data.labels | tojson }},
+            datasets: [
+                {
+                    label: '中标',
+                    data: {{ chart_data.won | tojson }},
+                    backgroundColor: gradientWon,
+                    borderColor: '#10b981',
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    borderSkipped: false,
+                },
+                {
+                    label: '未中标',
+                    data: {{ chart_data.lost | tojson }},
+                    backgroundColor: gradientLost,
+                    borderColor: '#ef4444',
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    borderSkipped: false,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { usePointStyle: true, pointStyleWidth: 8, padding: 20, font: { size: 13 } }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { size: 11 }, color: '#94a3b8' }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1, font: { size: 11 }, color: '#94a3b8' },
+                    grid: { color: '#f1f5f9' }
+                }
+            }
+        }
+    });
+});
+</script>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+{% endblock %}

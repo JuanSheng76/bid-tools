@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}报名管理 - 投标辅助工具{% endblock %}
+{% block header_title %}报名管理{% endblock %}
+{% block content %}
+
+<div class="filter-bar mb">
+    <form hx-get="/registrations" hx-target="body" class="flex-row" style="flex: 1;">
+        <select name="notice_id" style="width: 280px;">
+            <option value="">全部标讯</option>
+            {% for n in notices %}
+            <option value="{{ n.id }}" {{ 'selected' if filter_notice_id == n.id else '' }}>
+                {{ n.title[:35] }}{% if n.title|length > 35 %}...{% endif %}
+            </option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm">筛选</button>
+        <a href="/registrations" class="btn btn-sm">重置</a>
+    </form>
+    <button class="btn btn-primary" onclick="document.getElementById('new-reg-form').style.display='block'">+ 新建报名</button>
+</div>
+
+<!-- 新建报名表单 -->
+<div id="new-reg-form" class="card" style="display: {{ 'block' if view_notice else 'none' }};">
+    <h4>新建报名记录</h4>
+    <form method="post" action="/registrations" onsubmit="collectFormData()">
+        <div class="grid-2">
+            <div class="form-group">
+                <label>选择标讯 *</label>
+                <select name="notice_id" required>
+                    <option value="">-- 选择标讯 --</option>
+                    {% for n in notices %}
+                    <option value="{{ n.id }}" {{ 'selected' if view_notice and view_notice.id == n.id else '' }}>
+                        {{ n.title[:35] }}{% if n.title|length > 35 %}...{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>平台名称</label>
+                <input type="text" name="platform_name" value="{{ view_notice.platform_name if view_notice else '' }}" placeholder="如：政采云、贵州省公共资源交易中心">
+            </div>
+            <div class="form-group">
+                <label>平台账号</label>
+                <input type="text" name="platform_account" placeholder="注册使用的账号/CA锁编号">
+            </div>
+            <div class="form-group">
+                <label>备注</label>
+                <input type="text" name="notes" placeholder="报名注意事项">
+            </div>
+        </div>
+
+        <!-- 报名表单数据（自动填充区域） -->
+        <h5 class="mt">报名表单数据</h5>
+        <div hx-get="/registrations/auto-fill/{{ view_notice.id if view_notice else '' }}" hx-trigger="load" hx-swap="innerHTML" id="auto-fill-area">
+            <div class="text-secondary" style="padding: 20px; text-align: center;">
+                选择标讯后点击"自动填充"或手动输入
+            </div>
+        </div>
+        <div class="flex-row mt">
+            {% if view_notice %}
+            <button type="button" class="btn btn-sm btn-warning"
+                hx-get="/registrations/auto-fill/{{ view_notice.id }}"
+                hx-target="#auto-fill-area" hx-swap="innerHTML">
+                自动填充（从公司资料）
+            </button>
+            {% endif %}
+        </div>
+        <input type="hidden" name="form_data_json" id="form-data-json" value="{}">
+
+        <div class="flex-row mt">
+            <button type="submit" class="btn btn-primary">保存报名记录</button>
+            <button type="button" class="btn" onclick="document.getElementById('new-reg-form').style.display='none'">取消</button>
+        </div>
+    </form>
+</div>
+
+<!-- 报名列表 -->
+<div class="card" style="padding: 0;">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>标讯</th>
+                    <th>平台</th>
+                    <th>账号</th>
+                    <th>提交日期</th>
+                    <th>报名状态</th>
+                    <th>缴费状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in registrations %}
+                <tr>
+                    <td>
+                        <a href="/notices/{{ r.notice_id }}">{{ r.notice.title[:30] if r.notice else r.notice_id[:8] }}</a>
+                    </td>
+                    <td>{{ r.platform_name or '-' }}</td>
+                    <td class="text-secondary">{{ r.platform_account or '-' }}</td>
+                    <td>{{ r.submitted_at.strftime('%Y-%m-%d %H:%M') if r.submitted_at else '-' }}</td>
+                    <td>
+                        {% if r.status == 'pending' %}<span class="badge badge-new">待提交</span>
+                        {% elif r.status == 'submitted' %}<span class="badge badge-bidding">已提交</span>
+                        {% elif r.status == 'confirmed' %}<span class="badge badge-worth">已确认</span>
+                        {% elif r.status == 'rejected' %}<span class="badge badge-not-worth">已拒绝</span>
+                        {% else %}<span class="badge">{{ r.status }}</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if r.payment_status == 'paid' %}
+                        <span class="badge badge-worth">已缴费 ({{ '%.0f'|format(r.payment_amount) if r.payment_amount else '-' }}元)</span>
+                        {% elif r.payment_status == 'unpaid' %}
+                        <span class="badge badge-new">未缴费</span>
+                        {% else %}
+                        <span class="badge">{{ r.payment_status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="flex-row" style="gap: 4px;">
+                            {% if r.status == 'pending' %}
+                            <form method="post" action="/registrations/{{ r.id }}/status/submitted" class="inline-form"><button class="btn btn-sm btn-primary">提交</button></form>
+                            {% elif r.status == 'submitted' %}
+                            <form method="post" action="/registrations/{{ r.id }}/status/confirmed" class="inline-form"><button class="btn btn-sm btn-success">确认</button></form>
+                            <form method="post" action="/registrations/{{ r.id }}/status/rejected" class="inline-form" data-confirm="确认将此报名标记为拒绝吗？"><button class="btn btn-sm btn-danger">拒绝</button></form>
+                            {% endif %}
+                            {% if r.payment_status == 'unpaid' %}
+                            <form method="post" action="/registrations/{{ r.id }}/payment/paid?amount={{ r.notice.bid_document_fee or 0 }}" class="inline-form" data-confirm="确认已完成缴费吗？"><button class="btn btn-sm btn-warning">标记已缴费</button></form>
+                            {% endif %}
+                            <form method="post" action="/registrations/{{ r.id }}/delete" class="inline-form" data-confirm="确定删除这条报名记录吗？"><button class="btn btn-sm btn-danger">删除</button></form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7">
+                    <div class="empty-state">
+                        <div class="empty-icon empty-icon--notice"></div>
+                        <div class="empty-title">暂无报名记录</div>
+                        <div class="empty-desc">选择标讯后新建报名，系统可自动从公司资料填充表单</div>
+                    </div>
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function collectFormData() {
+    var container = document.getElementById('auto-fill-area');
+    if (!container) return;
+    var inputs = container.querySelectorAll('input[name^="fld_"]');
+    var data = {};
+    inputs.forEach(function(inp) {
+        var key = inp.name.replace('fld_', '');
+        data[key] = inp.value;
+    });
+    document.getElementById('form-data-json').value = JSON.stringify(data);
+}
+</script>
+
+{% endblock %}

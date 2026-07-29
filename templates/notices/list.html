@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}标讯管理 - 投标辅助工具{% endblock %}
+{% block header_title %}标讯管理{% endblock %}
+{% block content %}
+
+<div class="page-toolbar">
+    <div>
+        <h2>标讯工作台</h2>
+        <p>先处理待决策和临近截止项目，再进入投标准备。</p>
+    </div>
+    <div class="toolbar-actions">
+        <a href="/notices/export/excel{% if status %}?status={{ status }}{% endif %}" class="btn btn-success">导出</a>
+        <a href="/notices/new" class="btn btn-primary">+ 手动添加</a>
+    </div>
+</div>
+
+<div class="quick-filters mb" aria-label="快捷筛选">
+    <a href="/notices" class="quick-filter {{ 'active' if not view and not status and not decision else '' }}">全部</a>
+    <a href="/notices?view=attention" class="quick-filter {{ 'active' if view == 'attention' else '' }}">待处理</a>
+    <a href="/notices?view=expiring&sort=deadline" class="quick-filter {{ 'active' if view == 'expiring' else '' }}">7 天内截止</a>
+    <a href="/notices?view=overdue&sort=deadline" class="quick-filter {{ 'active' if view == 'overdue' else '' }}">已逾期</a>
+    <a href="/notices?decision=bid&sort=deadline" class="quick-filter {{ 'active' if decision == 'bid' else '' }}">已决定投标</a>
+</div>
+
+<div class="filter-bar">
+    <form action="/notices" method="get" class="flex-row" style="flex: 1;">
+        <input type="text" name="keyword" aria-label="搜索标讯" placeholder="搜索标题、范围或资质要求…" value="{{ keyword }}" style="width: 320px;">
+        <select name="status" aria-label="标讯状态" style="width: 140px;">
+            <option value="">全部状态</option>
+            <option value="new" {{ 'selected' if status == 'new' else '' }}>新标讯</option>
+            <option value="assessing" {{ 'selected' if status == 'assessing' else '' }}>评估中</option>
+            <option value="worth" {{ 'selected' if status == 'worth' else '' }}>值得投</option>
+            <option value="not_worth" {{ 'selected' if status == 'not_worth' else '' }}>不推荐</option>
+            <option value="registered" {{ 'selected' if status == 'registered' else '' }}>已报名</option>
+            <option value="bidding" {{ 'selected' if status == 'bidding' else '' }}>投标中</option>
+            <option value="completed" {{ 'selected' if status == 'completed' else '' }}>已完成</option>
+            <option value="ignored" {{ 'selected' if status == 'ignored' else '' }}>已忽略</option>
+        </select>
+        <select name="decision" aria-label="投标决策" style="width: 140px;">
+            <option value="">全部决策</option>
+            <option value="bid" {{ 'selected' if decision == 'bid' else '' }}>决定投标</option>
+            <option value="no_bid" {{ 'selected' if decision == 'no_bid' else '' }}>决定不投</option>
+        </select>
+        <select name="sort" aria-label="排序方式" style="width: 150px;">
+            <option value="created" {{ 'selected' if sort == 'created' else '' }}>最新收录</option>
+            <option value="deadline" {{ 'selected' if sort == 'deadline' else '' }}>截止时间优先</option>
+            <option value="budget_desc" {{ 'selected' if sort == 'budget_desc' else '' }}>预算从高到低</option>
+            <option value="budget_asc" {{ 'selected' if sort == 'budget_asc' else '' }}>预算从低到高</option>
+        </select>
+        <input type="hidden" name="view" value="{{ view }}">
+        <button type="submit" class="btn btn-primary">应用</button>
+        <a href="/notices" class="btn">重置</a>
+    </form>
+</div>
+
+<div class="flex-between mb" style="font-size: 13px; color: var(--text-secondary);">
+    <span>共 {{ total }} 条标讯{% if keyword %}，搜索“{{ keyword }}”{% endif %}</span>
+    <div class="flex-row">
+        {% set query = 'status=' + status + '&decision=' + decision + '&view=' + view + '&sort=' + sort + '&keyword=' + keyword %}
+        {% if page > 1 %}<a href="/notices?{{ query }}&page={{ page - 1 }}" class="btn btn-sm">上一页</a>{% endif %}
+        <span>第 {{ page }} / {{ total_pages }} 页</span>
+        {% if page < total_pages %}<a href="/notices?{{ query }}&page={{ page + 1 }}" class="btn btn-sm">下一页</a>{% endif %}
+    </div>
+</div>
+
+<div class="card" style="padding: 0;">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>项目</th>
+                    <th>投标截止</th>
+                    <th>预算与地区</th>
+                    <th>进度</th>
+                    <th style="width: 120px;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for n in notices %}
+                {% set days = (n.bid_deadline - now).days if n.bid_deadline else none %}
+                <tr>
+                    <td>
+                        <a class="notice-title" href="/notices/{{ n.id }}">{{ n.title }}</a>
+                        <div class="notice-meta">
+                            <span>{{ n.source.name if n.source else '手动录入' }}</span>
+                            {% if n.contact_person %}<span>联系人：{{ n.contact_person }}</span>{% endif %}
+                            {% if n.platform_registration_required %}<span class="tag tag-high">需平台注册</span>{% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        {% if n.bid_deadline %}
+                        <div class="deadline {{ 'is-overdue' if days < 0 else ('is-urgent' if days < 7 else '') }}">
+                            <strong>{{ n.bid_deadline.strftime('%Y-%m-%d %H:%M') }}</strong>
+                            <small>{% if days < 0 %}已逾期 {{ -days }} 天{% elif days == 0 %}今天截止{% else %}剩余 {{ days }} 天{% endif %}</small>
+                        </div>
+                        {% else %}<span class="text-muted">未设置</span>{% endif %}
+                    </td>
+                    <td>
+                        <div class="amount">{{ ('%.1f 万元'|format(n.budget_amount)) if n.budget_amount else '预算未录入' }}
+                            <small>{{ n.project_location or '地区未录入' }}</small>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="status-stack">
+                            {% if n.status == 'new' %}<span class="badge badge-new">待处理</span>
+                            {% elif n.status == 'assessing' %}<span class="badge badge-assessing">评估中</span>
+                            {% elif n.status == 'worth' %}<span class="badge badge-worth">值得投</span>
+                            {% elif n.status == 'not_worth' %}<span class="badge badge-not-worth">不推荐</span>
+                            {% elif n.status == 'registered' %}<span class="badge badge-registered">已报名</span>
+                            {% elif n.status == 'bidding' %}<span class="badge badge-bidding">投标中</span>
+                            {% elif n.status == 'completed' %}<span class="badge badge-completed">已完成</span>
+                            {% elif n.status == 'ignored' %}<span class="badge badge-ignored">已忽略</span>
+                            {% endif %}
+                            {% if n.bid_decision == 'bid' %}<span class="decision decision-bid">✓ 已决定投标</span>{% endif %}
+                            {% if n.bid_decision == 'no_bid' %}<span class="decision decision-no-bid">× {{ '已放弃' if n.abandon_reason else '已决定不投' }}</span>{% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="flex-row" style="gap: 6px; flex-wrap: nowrap;">
+                            <a href="/notices/{{ n.id }}" class="btn btn-sm">详情</a>
+                            <details class="action-menu">
+                                <summary aria-label="更多操作">更多</summary>
+                                <div class="action-menu__panel">
+                                    {% if n.status in ['new', 'assessing'] %}
+                                    <form method="post" action="/notices/{{ n.id }}/assess"><button type="submit">重新评估</button></form>
+                                    {% endif %}
+                                    {% if n.bid_decision == 'bid' and n.status not in ['completed', 'ignored'] %}
+                                    <a href="/tasks/generate/{{ n.id }}">生成倒排计划</a>
+                                    {% endif %}
+                                    <form method="post" action="/notices/{{ n.id }}/delete" data-confirm="确定删除“{{ n.title }}”吗？删除后无法恢复。">
+                                        <button type="submit" class="text-danger">删除</button>
+                                    </form>
+                                </div>
+                            </details>
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="5">
+                    <div class="empty-state">
+                        <div class="empty-icon empty-icon--notice"></div>
+                        <div class="empty-title">没有符合条件的标讯</div>
+                        <div class="empty-desc">调整筛选条件，或手动添加一条新标讯。</div>
+                        <a href="/notices/new" class="btn btn-primary">+ 添加标讯</a>
+                    </div>
+                </td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

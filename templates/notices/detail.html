@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+{% block title %}{{ notice.title }} - 标讯详情{% endblock %}
+{% block header_title %}标讯详情{% endblock %}
+{% block content %}
+
+<div class="flex-between mb">
+    <div class="flex-row">
+        <a href="/notices" class="btn btn-sm">← 返回列表</a>
+        {% if notice.status == 'new' %}
+        <form method="post" action="/notices/{{ notice.id }}/assess" class="inline-form">
+            <button type="submit" class="btn btn-sm btn-warning">执行评估</button>
+        </form>
+        {% endif %}
+        {% if notice.bid_decision == 'bid' and notice.status not in ['completed', 'ignored'] %}
+        <a href="/tasks/generate/{{ notice.id }}" class="btn btn-sm btn-success">
+            {{ '重排计划' if notice.tasks and notice.tasks|length > 0 else '生成倒排计划' }}
+        </a>
+        <button type="button" class="btn btn-sm btn-danger" onclick="openAbandonDialog()" style="--btn-text: '放弃投标';">
+            放弃投标
+        </button>
+        {% endif %}
+        <!-- 手动决策按钮 -->
+        {% if notice.status in ['new', 'assessing', 'worth', 'not_worth'] %}
+            {% if notice.bid_decision != 'bid' %}
+            <form method="post" action="/notices/{{ notice.id }}/decide/bid" class="inline-form"
+                  data-confirm="确认决定投标“{{ notice.title }}”吗？">
+                <button type="submit" class="btn btn-sm btn-success">决定投标</button>
+            </form>
+            {% endif %}
+            {% if notice.bid_decision != 'no_bid' %}
+            <form method="post" action="/notices/{{ notice.id }}/decide/no_bid" class="inline-form"
+                  data-confirm="确认决定不投“{{ notice.title }}”吗？项目将移入已忽略。">
+                <button type="submit" class="btn btn-sm btn-danger">决定不投</button>
+            </form>
+            {% endif %}
+        {% endif %}
+        {% if notice.bid_decision %}
+        <span style="padding: 4px 8px; border-radius: 4px; font-size: 13px; {{ 'background: #d4edda; color: #155724;' if notice.bid_decision == 'bid' else 'background: #f8d7da; color: #721c24;' }}">
+            {{ '已决定投标' if notice.bid_decision == 'bid' else '已放弃/不投' }}
+        </span>
+        {% endif %}
+        {% if notice.abandon_reason %}
+        <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; background: #fff3cd; color: #856404; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ notice.abandon_reason }}">
+            原因：{{ notice.abandon_reason }}
+        </span>
+        {% endif %}
+    </div>
+    <div class="flex-row">
+        <form method="post" action="/notices/{{ notice.id }}/delete" class="inline-form"
+              data-confirm="确定删除“{{ notice.title }}”吗？删除后无法恢复。">
+            <button type="submit" class="btn btn-sm btn-danger">删除</button>
+        </form>
+    </div>
+</div>
+
+<!-- 基本信息 -->
+<div class="card">
+    <div class="flex-between mb">
+        <h3 style="margin: 0;">{{ notice.title }}</h3>
+        <div>
+            {% if notice.status == 'new' %}<span class="badge badge-new">待处理</span>
+            {% elif notice.status == 'assessing' %}<span class="badge badge-assessing">评估中</span>
+            {% elif notice.status == 'worth' %}<span class="badge badge-worth">值得投</span>
+            {% elif notice.status == 'not_worth' %}<span class="badge badge-not-worth">不推荐</span>
+            {% elif notice.status == 'registered' %}<span class="badge badge-registered">已报名</span>
+            {% elif notice.status == 'bidding' %}<span class="badge badge-bidding">投标中</span>
+            {% elif notice.status == 'completed' %}<span class="badge badge-completed">已完成</span>
+            {% elif notice.status == 'ignored' %}<span class="badge badge-ignored">已忽略</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="form-group">
+            <label>来源网址</label>
+            <div class="text-secondary">{{ notice.source_url or '手动录入' }}</div>
+        </div>
+        <div class="form-group">
+            <label>发布日期</label>
+            <div>{{ notice.publishing_date.strftime('%Y-%m-%d') if notice.publishing_date else '-' }}</div>
+        </div>
+        <div class="form-group">
+            <label>报名截止</label>
+            <div style="font-weight: bold; {{ 'color: var(--danger);' if notice.registration_deadline and notice.registration_deadline < now else '' }}">
+                {{ notice.registration_deadline.strftime('%Y-%m-%d %H:%M') if notice.registration_deadline else '未指定' }}
+            </div>
+        </div>
+        <div class="form-group">
+            <label>投标截止</label>
+            <div style="font-weight: bold; {{ 'color: var(--danger);' if notice.bid_deadline and (notice.bid_deadline - now).days < 7 else '' }}">
+                {{ notice.bid_deadline.strftime('%Y-%m-%d %H:%M') if notice.bid_deadline else '未指定' }}
+                {% if notice.bid_deadline %}
+                {% set days = (notice.bid_deadline - now).days %}
+                <span style="{{ 'color: var(--danger);' if days < 7 else 'color: var(--text-secondary);' }}">({{ days }}天)</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="form-group">
+            <label>开标时间</label>
+            <div>{{ notice.bid_opening_date.strftime('%Y-%m-%d %H:%M') if notice.bid_opening_date else '未指定' }}</div>
+        </div>
+        <div class="form-group">
+            <label>开标地点</label>
+            <div>{{ notice.bid_opening_location or '-' }}</div>
+        </div>
+        <div class="form-group">
+            <label>预算金额（万元）</label>
+            <div style="font-size: 20px; font-weight: bold;">{{ '%.1f'|format(notice.budget_amount) if notice.budget_amount else '-' }}</div>
+        </div>
+        <div class="form-group">
+            <label>标书费（元）</label>
+            <div>{{ '%.0f'|format(notice.bid_document_fee) if notice.bid_document_fee else '-' }}</div>
+        </div>
+        <div class="form-group">
+            <label>投标保证金（万元）</label>
+            <div>{{ '%.1f'|format(notice.bid_bond_amount) if notice.bid_bond_amount else '-' }}</div>
+        </div>
+        <div class="form-group">
+            <label>项目所在地</label>
+            <div>{{ notice.project_location or '-' }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- 平台与联系 -->
+<div class="card">
+    <h4>平台与联系信息</h4>
+    <div class="grid-2">
+        <div class="form-group">
+            <label>是否需要平台注册</label>
+            <div>
+                {% if notice.platform_registration_required %}
+                <span class="tag tag-high">需要 - {{ notice.platform_name or '未指定平台' }}</span>
+                {% else %}
+                <span class="tag">不需要</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="form-group">
+            <label>联系人</label>
+            <div>{{ notice.contact_person or '-' }}</div>
+        </div>
+        <div class="form-group">
+            <label>联系电话</label>
+            <div>{{ notice.contact_phone or '-' }}</div>
+        </div>
+        <div class="form-group">
+            <label>联系邮箱</label>
+            <div>{{ notice.contact_email or '-' }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- 资质要求 -->
+<div class="card">
+    <h4>资质要求</h4>
+    <div style="white-space: pre-wrap; background: #fafafa; padding: 12px; border-radius: 6px; font-size: 14px;">
+        {{ notice.qualification_requirements or '未指定' }}
+    </div>
+</div>
+
+<!-- 评估结果 -->
+{% if notice.assessment %}
+<div class="card" style="border-left: 4px solid {{ 'var(--success)' if notice.assessment.recommendation == 'recommend' else 'var(--warning)' if notice.assessment.recommendation == 'consider' else 'var(--danger)' }};">
+    <h4>投标评估</h4>
+    <div class="grid-2">
+        <div>
+            <div style="font-size: 48px; font-weight: bold; color: {{ 'var(--success)' if notice.assessment.recommendation == 'recommend' else 'var(--warning)' if notice.assessment.recommendation == 'consider' else 'var(--danger)' }};">
+                {{ notice.assessment.total_score }}
+            </div>
+            <div class="text-secondary">综合评分 / 100</div>
+            <div style="margin-top: 8px;">
+                {% if notice.assessment.recommendation == 'recommend' %}
+                <span class="badge badge-worth" style="font-size: 16px;">推荐投标</span>
+                {% elif notice.assessment.recommendation == 'consider' %}
+                <span class="badge badge-bidding" style="font-size: 16px;">可考虑</span>
+                {% else %}
+                <span class="badge badge-not-worth" style="font-size: 16px;">不推荐</span>
+                {% endif %}
+            </div>
+        </div>
+        <div>
+            {% set scores = [
+                ('资质匹配(40)', notice.assessment.qual_score, 40),
+                ('业绩匹配(25)', notice.assessment.perf_score, 25),
+                ('人员匹配(15)', notice.assessment.personnel_score, 15),
+                ('财务能力(10)', notice.assessment.financial_score, 10),
+                ('其他因素(10)', notice.assessment.other_score, 10),
+            ] %}
+            {% for label, score, max in scores %}
+            <div style="margin-bottom: 6px;">
+                <div class="flex-between" style="font-size: 13px;">
+                    <span>{{ label }}</span>
+                    <span>{{ score }}/{{ max }}</span>
+                </div>
+                <div style="background: #f0f0f0; height: 6px; border-radius: 3px; margin-top: 2px;">
+                    <div style="background: {{ 'var(--success)' if score/max >= 0.7 else 'var(--warning)' if score/max >= 0.4 else 'var(--danger)' }}; height: 100%; width: {{ (score/max*100)|int }}%; border-radius: 3px;"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% if notice.assessment.missing_requirements %}
+    <div class="mt">
+        <strong class="text-danger">风险提示：</strong>
+        <span>{{ notice.assessment.risk_notes }}</span>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- 编辑表单（折叠） -->
+<details class="mt">
+    <summary style="cursor: pointer; font-weight: 500;">编辑标讯信息</summary>
+    <form method="post" action="/notices/{{ notice.id }}/edit" class="card mt">
+        <div class="grid-2">
+            <div class="form-group">
+                <label>标题</label>
+                <input type="text" name="title" value="{{ notice.title }}" required>
+            </div>
+            <div class="form-group">
+                <label>状态</label>
+                <select name="status">
+                    <option value="new" {{ 'selected' if notice.status == 'new' }}>新标讯</option>
+                    <option value="worth" {{ 'selected' if notice.status == 'worth' }}>值得投</option>
+                    <option value="not_worth" {{ 'selected' if notice.status == 'not_worth' }}>不值得</option>
+                    <option value="registered" {{ 'selected' if notice.status == 'registered' }}>已报名</option>
+                    <option value="bidding" {{ 'selected' if notice.status == 'bidding' }}>投标中</option>
+                    <option value="completed" {{ 'selected' if notice.status == 'completed' }}>已完成</option>
+                    <option value="ignored" {{ 'selected' if notice.status == 'ignored' }}>已忽略</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>来源网址</label>
+                <input type="url" name="source_url" value="{{ notice.source_url or '' }}">
+            </div>
+            <div class="form-group">
+                <label>发布日期</label>
+                <input type="date" name="publishing_date" value="{{ notice.publishing_date.strftime('%Y-%m-%d') if notice.publishing_date else '' }}">
+            </div>
+            <div class="form-group">
+                <label>报名截止</label>
+                <input type="datetime-local" name="registration_deadline" value="{{ notice.registration_deadline.strftime('%Y-%m-%dT%H:%M') if notice.registration_deadline else '' }}">
+            </div>
+            <div class="form-group">
+                <label>投标截止</label>
+                <input type="datetime-local" name="bid_deadline" value="{{ notice.bid_deadline.strftime('%Y-%m-%dT%H:%M') if notice.bid_deadline else '' }}">
+            </div>
+            <div class="form-group">
+                <label>开标时间</label>
+                <input type="datetime-local" name="bid_opening_date" value="{{ notice.bid_opening_date.strftime('%Y-%m-%dT%H:%M') if notice.bid_opening_date else '' }}">
+            </div>
+            <div class="form-group">
+                <label>开标地点</label>
+                <input type="text" name="bid_opening_location" value="{{ notice.bid_opening_location or '' }}">
+            </div>
+            <div class="form-group">
+                <label>预算金额（万元）</label>
+                <input type="number" step="0.1" name="budget_amount" value="{{ notice.budget_amount or '' }}">
+            </div>
+            <div class="form-group">
+                <label>标书费（元）</label>
+                <input type="number" step="0.01" name="bid_document_fee" value="{{ notice.bid_document_fee or '' }}">
+            </div>
+            <div class="form-group">
+                <label>投标保证金（万元）</label>
+                <input type="number" step="0.1" name="bid_bond_amount" value="{{ notice.bid_bond_amount or '' }}">
+            </div>
+            <div class="form-group">
+                <label>项目所在地</label>
+                <input type="text" name="project_location" value="{{ notice.project_location or '' }}">
+            </div>
+            <div class="form-group">
+                <label>联系人</label>
+                <input type="text" name="contact_person" value="{{ notice.contact_person or '' }}">
+            </div>
+            <div class="form-group">
+                <label>联系电话</label>
+                <input type="text" name="contact_phone" value="{{ notice.contact_phone or '' }}">
+            </div>
+            <div class="form-group">
+                <label>联系邮箱</label>
+                <input type="email" name="contact_email" value="{{ notice.contact_email or '' }}">
+            </div>
+            <div class="form-group">
+                <label>平台名称</label>
+                <input type="text" name="platform_name" value="{{ notice.platform_name or '' }}">
+            </div>
+            <div class="form-group">
+                <label>需要平台注册</label>
+                <input type="checkbox" name="platform_registration_required" {{ 'checked' if notice.platform_registration_required else '' }} style="width: auto;">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>项目范围</label>
+            <textarea name="project_scope">{{ notice.project_scope or '' }}</textarea>
+        </div>
+        <div class="form-group">
+            <label>资质要求</label>
+            <textarea name="qualification_requirements">{{ notice.qualification_requirements or '' }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">保存修改</button>
+    </form>
+</details>
+
+<!-- 放弃投标弹窗 -->
+<dialog id="abandon-dialog" class="abandon-dialog" aria-labelledby="abandon-title">
+    <div class="abandon-dialog__header">
+        <h3 id="abandon-title">放弃投标</h3>
+        <p>请选择或填写放弃原因，确认后该标讯将移入已忽略。</p>
+    </div>
+    <div class="abandon-dialog__presets">
+        <span class="abandon-preset" data-reason="时间来不及，无法在规定期限内完成投标">时间来不及</span>
+        <span class="abandon-preset" data-reason="资质不符合招标要求">资质不符合</span>
+        <span class="abandon-preset" data-reason="评分项扣分过多，中标希望渺茫">评分项扣分过多</span>
+        <span class="abandon-preset" data-reason="竞争对手优势明显，我方无竞争力">竞争过于激烈</span>
+        <span class="abandon-preset" data-reason="项目成本过高，利润空间不足">成本过高/利润不足</span>
+        <span class="abandon-preset" data-reason="业主关系或商务条件不可行">商务条件不可行</span>
+    </div>
+    <form method="post" action="/notices/{{ notice.id }}/abandon" id="abandon-form">
+        <div class="form-group">
+            <label for="abandon-reason">放弃原因</label>
+            <textarea id="abandon-reason" name="abandon_reason" rows="3" required placeholder="请选择上方预设原因，或自行填写具体原因…"></textarea>
+        </div>
+        <div class="abandon-dialog__actions">
+            <button type="button" class="btn" onclick="closeAbandonDialog()">取消</button>
+            <button type="submit" class="btn btn-danger">确认放弃投标</button>
+        </div>
+    </form>
+</dialog>
+
+<style>
+    .abandon-dialog {
+        width: min(480px, calc(100vw - 40px));
+        border: 0; border-radius: 16px; padding: 0;
+        box-shadow: 0 24px 70px rgba(15,23,42,.28);
+    }
+    .abandon-dialog::backdrop {
+        background: rgba(15,23,42,.48); backdrop-filter: blur(2px);
+    }
+    .abandon-dialog__header {
+        padding: 22px 24px 16px; border-bottom: 1px solid var(--border);
+    }
+    .abandon-dialog__header h3 { margin: 0 0 4px; font-size: 17px; }
+    .abandon-dialog__header p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+    .abandon-dialog__presets {
+        display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 24px;
+    }
+    .abandon-preset {
+        display: inline-block; padding: 6px 14px; border: 1px solid var(--border);
+        border-radius: 999px; font-size: 13px; color: var(--text-secondary);
+        cursor: pointer; transition: all var(--transition);
+        background: #fff; user-select: none;
+    }
+    .abandon-preset:hover {
+        color: var(--danger); border-color: var(--danger);
+        background: var(--danger-light);
+    }
+    .abandon-preset.selected {
+        color: #fff; background: var(--danger); border-color: var(--danger);
+    }
+    .abandon-dialog form { padding: 0 24px 20px; }
+    .abandon-dialog .form-group { margin-bottom: 16px; }
+    .abandon-dialog textarea {
+        width: 100%; padding: 10px 14px; border: 1px solid var(--border);
+        border-radius: var(--radius-sm); font-size: 14px; font-family: inherit;
+        resize: vertical;
+    }
+    .abandon-dialog__actions {
+        display: flex; justify-content: flex-end; gap: 10px;
+    }
+</style>
+
+<script>
+    const abandonDialog = document.getElementById('abandon-dialog');
+    const abandonReasonTextarea = document.getElementById('abandon-reason');
+
+    function openAbandonDialog() {
+        abandonReasonTextarea.value = '';
+        abandonDialog.querySelectorAll('.abandon-preset').forEach(el => el.classList.remove('selected'));
+        abandonDialog.showModal();
+    }
+
+    function closeAbandonDialog() {
+        abandonDialog.close();
+    }
+
+    // 预设原因点击
+    abandonDialog.querySelectorAll('.abandon-preset').forEach(el => {
+        el.addEventListener('click', () => {
+            abandonReasonTextarea.value = el.dataset.reason;
+            abandonDialog.querySelectorAll('.abandon-preset').forEach(e => e.classList.remove('selected'));
+            el.classList.add('selected');
+        });
+    });
+
+    // 点击遮罩关闭
+    abandonDialog.addEventListener('click', (e) => {
+        if (e.target === abandonDialog) abandonDialog.close();
+    });
+</script>
+
+{% endblock %}

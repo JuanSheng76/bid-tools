@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}{{ task.title }} - 任务详情{% endblock %}
+{% block header_title %}任务详情{% endblock %}
+{% block content %}
+
+<a href="/tasks" class="btn btn-sm mb">← 返回看板</a>
+
+<div class="grid-2">
+    <div>
+        <!-- 任务信息 -->
+        <div class="card">
+            <div class="flex-between mb">
+                <h3 style="margin: 0;">{{ task.title }}</h3>
+                {% if task.priority == 'high' %}<span class="tag tag-high">高优先级</span>
+                {% elif task.priority == 'urgent' %}<span class="tag tag-urgent">紧急</span>
+                {% elif task.priority == 'medium' %}<span class="tag tag-medium">中等</span>
+                {% else %}<span class="tag tag-low">低</span>{% endif %}
+            </div>
+
+            <div class="mb">
+                <strong>状态：</strong>
+                {% if task.status == 'todo' %}<span class="badge badge-new">待开始</span>
+                {% elif task.status == 'in_progress' %}<span class="badge badge-bidding">进行中</span>
+                {% elif task.status == 'done' %}<span class="badge badge-worth">已完成</span>{% endif %}
+            </div>
+
+            <div class="mb">
+                <strong>类型：</strong>
+                {% set type_map = {
+                    'get_docs': '获取招标文件', 'qualifications': '资质项及承诺函',
+                    'pricing': '报价', 'certs': '评分项证书/业绩',
+                    'writing': '编写服务方案', 'format': '调整格式',
+                    'stamp': '盖章', 'custom': '自定义'
+                } %}
+                <span class="tag">{{ type_map.get(task.task_type, task.task_type) }}</span>
+            </div>
+
+            {% if notice %}
+            <div class="mb">
+                <strong>关联标讯：</strong>
+                <a href="/notices/{{ notice.id }}">{{ notice.title[:40] }}</a>
+            </div>
+            {% endif %}
+
+            <div class="grid-2 mb">
+                <div><strong>计划开始：</strong>{{ task.planned_start.strftime('%Y-%m-%d') if task.planned_start else '-' }}</div>
+                <div><strong>计划完成：</strong>{{ task.planned_end.strftime('%Y-%m-%d') if task.planned_end else '-' }}</div>
+            </div>
+
+            <div class="mb">
+                <strong>负责人：</strong>
+                <span id="assignee-display">
+                    {% if task.assignee %}
+                    👤 {{ task.assignee.full_name }}
+                    {% else %}
+                    <span class="text-warning">未分配</span>
+                    {% endif %}
+                </span>
+            </div>
+
+            <!-- 分配负责人 -->
+            <div class="flex-row">
+                <select id="assignee-select" class="btn-sm" onchange="assignTask('{{ task.id }}', this.value)">
+                    <option value="">-- 选择负责人 --</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}" {{ 'selected' if task.assignee_id == u.id else '' }}>
+                        {{ u.full_name or u.username }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            {% if task.description %}
+            <div class="mt">
+                <strong>描述：</strong>
+                <p class="text-secondary">{{ task.description }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 编辑 -->
+        <details class="mt">
+                    <summary style="cursor: pointer;">编辑任务</summary>
+            <form method="post" action="/tasks/{{ task.id }}/edit" class="card mt">
+                <div class="form-group">
+                    <label>任务名称</label>
+                    <input type="text" name="title" value="{{ task.title }}" required>
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <textarea name="description">{{ task.description or '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>优先级</label>
+                    <select name="priority">
+                        <option value="low" {{ 'selected' if task.priority == 'low' }}>低</option>
+                        <option value="medium" {{ 'selected' if task.priority == 'medium' }}>中</option>
+                        <option value="high" {{ 'selected' if task.priority == 'high' }}>高</option>
+                        <option value="urgent" {{ 'selected' if task.priority == 'urgent' }}>紧急</option>
+                    </select>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>计划开始</label>
+                        <input type="date" name="planned_start" value="{{ task.planned_start.strftime('%Y-%m-%d') if task.planned_start else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>计划完成</label>
+                        <input type="date" name="planned_end" value="{{ task.planned_end.strftime('%Y-%m-%d') if task.planned_end else '' }}">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">保存</button>
+            </form>
+        </details>
+    </div>
+
+    <div>
+        <!-- Checklist -->
+        <div class="card" x-data="checklistApp('{{ task.id }}', {{ task.checklist|tojson }})">
+            <h4>检查清单</h4>
+            <template x-for="(item, idx) in items" :key="idx">
+                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border);">
+                    <input type="checkbox" x-model="item.done" @change="save()">
+                    <span x-text="item.text" :style="item.done ? 'text-decoration: line-through; color: var(--text-secondary);' : ''"></span>
+                    <button class="btn btn-sm btn-danger" @click="remove(idx)" style="margin-left: auto;">×</button>
+                </div>
+            </template>
+            <div class="flex-row mt" style="gap: 4px;">
+                <input type="text" x-model="newText" @keydown.enter="add()" placeholder="添加检查项..." style="flex: 1;">
+                <button class="btn btn-sm" @click="add()">+</button>
+            </div>
+        </div>
+
+        <!-- 快速状态切换 -->
+        <div class="card mt">
+            <h4>快速操作</h4>
+            <div class="flex-row">
+                <button class="btn btn-sm {{ 'btn-primary' if task.status == 'todo' else '' }}"
+                    onclick="updateTaskStatus('{{ task.id }}', 'todo')">待开始</button>
+                <button class="btn btn-sm {{ 'btn-primary' if task.status == 'in_progress' else '' }}"
+                    onclick="updateTaskStatus('{{ task.id }}', 'in_progress')">进行中</button>
+                <button class="btn btn-sm {{ 'btn-success' if task.status == 'done' else '' }}"
+                    onclick="updateTaskStatus('{{ task.id }}', 'done')">已完成</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js" defer></script>
+{% endblock %}

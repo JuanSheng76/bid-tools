@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}添加标讯 - 投标辅助工具{% endblock %}
+{% block header_title %}手动添加标讯{% endblock %}
+{% block content %}
+<div class="page-toolbar" style="max-width: 920px;">
+    <div><h2>新建标讯</h2><p>先填写项目和截止日期，费用、平台与资质信息可按需补充。</p></div>
+</div>
+
+<form method="post" action="/notices" style="max-width: 920px;">
+    <section class="form-section">
+        <div class="form-section__header"><h3>基本信息</h3><p>用于识别项目和追溯公告来源。</p></div>
+        <div class="grid-2">
+            <div class="form-group" style="grid-column:1/-1;">
+                <label for="title">标讯标题 *</label>
+                <input id="title" type="text" name="title" required autofocus placeholder="输入完整标讯标题">
+            </div>
+            <div class="form-group"><label for="source_url">来源网址</label><input id="source_url" type="url" name="source_url" placeholder="https://…"></div>
+            <div class="form-group"><label for="publishing_date">发布日期</label><input id="publishing_date" type="date" name="publishing_date" value="{{ defaults.publishing_date }}"></div>
+            <div class="form-group"><label for="project_location">项目所在地</label><input id="project_location" type="text" name="project_location"></div>
+            <div class="form-group"><label for="budget_amount">预算金额</label><input id="budget_amount" type="number" min="0" step="0.1" name="budget_amount" placeholder="单位：万元"></div>
+        </div>
+    </section>
+
+    <section class="form-section">
+        <div class="form-section__header"><h3>关键时间</h3><p>这些日期将用于提醒和倒排计划。</p></div>
+        <div class="grid-2">
+            <div class="form-group"><label for="registration_deadline">报名截止</label><input id="registration_deadline" type="datetime-local" name="registration_deadline" value="{{ defaults.registration_deadline }}"></div>
+            <div class="form-group"><label for="bid_deadline">投标截止</label><input id="bid_deadline" type="datetime-local" name="bid_deadline" value="{{ defaults.bid_deadline }}"></div>
+            <div class="form-group"><label for="bid_opening_date">开标时间</label><input id="bid_opening_date" type="datetime-local" name="bid_opening_date" value="{{ defaults.bid_opening_date }}"></div>
+            <div class="form-group"><label for="bid_opening_location">开标地点</label><input id="bid_opening_location" type="text" name="bid_opening_location"></div>
+        </div>
+    </section>
+
+    <section class="form-section">
+        <div class="form-section__header"><h3>项目要求</h3><p>评估模块会参考项目范围和资质要求。</p></div>
+        <div class="form-group"><label for="project_scope">项目范围或规模</label><textarea id="project_scope" name="project_scope" rows="3"></textarea></div>
+        <div class="form-group"><label for="qualification_requirements">资质要求</label><textarea id="qualification_requirements" name="qualification_requirements" rows="4" placeholder="例如：相关施工资质、认证、人员证书等"></textarea></div>
+    </section>
+
+    <details class="form-section">
+        <summary>费用、平台与联系信息（选填）</summary>
+        <div class="form-section__body">
+            <div class="grid-2">
+                <div class="form-group"><label for="bid_document_fee">标书费</label><input id="bid_document_fee" type="number" min="0" step="0.01" name="bid_document_fee" placeholder="单位：元"></div>
+                <div class="form-group"><label for="bid_bond_amount">投标保证金</label><input id="bid_bond_amount" type="number" min="0" step="0.1" name="bid_bond_amount" placeholder="单位：万元"></div>
+                <div class="form-group"><label for="contact_person">联系人</label><input id="contact_person" type="text" name="contact_person"></div>
+                <div class="form-group"><label for="contact_phone">联系电话</label><input id="contact_phone" type="tel" name="contact_phone"></div>
+                <div class="form-group"><label for="contact_email">联系邮箱</label><input id="contact_email" type="email" name="contact_email"></div>
+                <div class="form-group"><label for="platform_name">平台名称</label><input id="platform_name" type="text" name="platform_name"></div>
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="platform_registration_required" style="width:auto;">需要平台注册</label>
+                </div>
+            </div>
+        </div>
+    </details>
+
+    <div class="sticky-form-actions">
+        <a href="/notices" class="btn">取消</a>
+        <button type="submit" class="btn btn-primary">保存标讯</button>
+    </div>
+</form>
+{% endblock %}

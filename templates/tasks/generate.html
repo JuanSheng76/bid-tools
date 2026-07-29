@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}{{ '重排计划' if existing_tasks > 0 else '生成倒排计划' }} - 投标辅助工具{% endblock %}
+{% block header_title %}{{ '重排计划' if existing_tasks > 0 else '生成倒排计划' }}{% endblock %}
+{% block content %}
+
+<div class="flex-between mb">
+    <a href="/notices/{{ notice.id }}" class="btn btn-sm">← 返回标讯详情</a>
+    <a href="/tasks?notice_id={{ notice.id }}" class="btn btn-sm">查看已有任务</a>
+</div>
+
+<div class="card">
+    <h3 style="margin-top: 0;">标讯：{{ notice.title }}</h3>
+    <div class="grid-2 mb">
+        <div>
+            <span class="text-secondary">当前投标截止日期：</span>
+            <strong style="{{ 'color: var(--danger);' if notice.bid_deadline and (notice.bid_deadline - now).days < 7 else '' }}">
+                {{ notice.bid_deadline.strftime('%Y-%m-%d %H:%M') if notice.bid_deadline else '未设置' }}
+            </strong>
+            {% if notice.bid_deadline %}
+            {% set days_left = (notice.bid_deadline - now).days %}
+            <span class="{{ 'text-danger' if days_left < 7 else 'text-secondary' }}">(剩余 {{ days_left }} 天)</span>
+            {% endif %}
+        </div>
+        <div>
+            <span class="text-secondary">预算：</span>
+            <strong>{{ '%.1f 万元'|format(notice.budget_amount) if notice.budget_amount else '未指定' }}</strong>
+        </div>
+    </div>
+</div>
+
+{% if existing_tasks > 0 %}
+<div class="card" style="border-left: 4px solid var(--warning);">
+    <p style="margin: 0 0 8px 0;">
+        该标讯已有 <strong>{{ existing_tasks }}</strong> 个任务。
+    </p>
+    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+        <input type="checkbox" id="replace_tasks" name="replace" value="1" style="width: auto;"
+               onchange="document.getElementById('confirm-msg').textContent = this.checked ? '将删除已有 {{ existing_tasks }} 个任务并重新创建 {{ task_templates|length }} 个任务。确认？' : '将追加创建 {{ task_templates|length }} 个新任务（保留已有 {{ existing_tasks }} 个）。确认？'">
+        <strong style="color: var(--danger);">🗑 删除已有任务后重新生成</strong>
+    </label>
+</div>
+{% endif %}
+
+<form method="post" action="/tasks/generate/{{ notice.id }}"
+      data-confirm="{{ '确认重排计划吗？现有任务将被替换。' if existing_tasks > 0 else '确认生成倒排计划吗？将创建 ' ~ (task_templates|length) ~ ' 个任务。' }}">
+    {% if existing_tasks > 0 %}
+    <input type="hidden" name="replace" id="replace-hidden" value="0">
+    {% endif %}
+    <div class="card">
+        <h4>倒排计划设置</h4>
+        <p class="text-secondary">设置目标截止日期，系统将从此日期向前倒推生成各阶段任务。</p>
+
+        <div class="form-group">
+            <label>目标截止日期（所有任务在此日期前完成）</label>
+            <input type="datetime-local" name="target_deadline" value="{{ target_deadline }}" required
+                   style="font-size: 16px; padding: 10px 14px; max-width: 320px;">
+            <small class="text-secondary">默认为标讯的投标截止日期，可根据实际情况调整</small>
+        </div>
+    </div>
+
+    <div class="card">
+        <h4>任务阶段设置（距截止日期的工作日天数）</h4>
+        <p class="text-secondary">可调整每个阶段距截止日期的天数，系统自动跳过周末计算实际日期。</p>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">#</th>
+                        <th>任务名称</th>
+                        <th style="width: 120px;">距截止日(工作日)</th>
+                        <th>预计日期</th>
+                        <th>优先级</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tpl in task_templates %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>
+                            <strong>{{ tpl.title }}</strong>
+                            <input type="hidden" name="task_type" value="{{ tpl.task_type }}">
+                            <input type="hidden" name="title_{{ tpl.task_type }}" value="{{ tpl.title }}">
+                        </td>
+                        <td>
+                            <input type="number" name="days_before_{{ tpl.task_type }}" value="{{ tpl.days_before }}"
+                                   min="0" max="365" style="width: 70px; text-align: center;" required>
+                            <small>天前</small>
+                        </td>
+                        <td>
+                            <span class="text-secondary" id="preview_{{ tpl.task_type }}">
+                                {{ tpl.preview_date.strftime('%m-%d') if tpl.preview_date else '-' }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if tpl.priority == 'urgent' %}
+                            <span class="tag tag-urgent">紧急</span>
+                            {% elif tpl.priority == 'high' %}
+                            <span class="tag tag-high">高</span>
+                            {% elif tpl.priority == 'medium' %}
+                            <span class="tag">中</span>
+                            {% else %}
+                            <span class="tag tag-low">低</span>
+                            {% endif %}
+                            <input type="hidden" name="priority_{{ tpl.task_type }}" value="{{ tpl.priority }}">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="font-size: 16px; padding: 10px 32px;">
+        {{ '重排计划' if existing_tasks > 0 else '生成倒排计划' }}
+    </button>
+    <a href="/notices/{{ notice.id }}" class="btn">取消</a>
+</form>
+
+<script>
+// 同步 checkbox 到 hidden input
+document.getElementById('replace_tasks')?.addEventListener('change', function() {
+    document.getElementById('replace-hidden').value = this.checked ? '1' : '0';
+});
+</script>
+
+{% endblock %}

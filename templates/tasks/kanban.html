@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}任务看板 - 投标辅助工具{% endblock %}
+{% block header_title %}任务看板{% endblock %}
+
+{% macro task_card(t, done=false) %}
+{% set nc = t.notice.id | notice_color if t.notice else None %}
+{% set days = (t.planned_end - now).days if t.planned_end else none %}
+<div class="task-card {{ 'is-overdue' if days is not none and days < 0 and not done else '' }}"
+     data-task-id="{{ t.id }}" {{ 'style="opacity:.72"'|safe if done else '' }}>
+    <div class="task-notice-tag" title="{{ t.notice.title if t.notice else '' }}"
+         style="{{ ('color:' + nc.primary + '; background:' + nc.bg + '; border-left-color:' + nc.primary + ';') if nc else '' }}">
+        {{ t.notice.title[:24] if t.notice else '未知标讯' }}{% if t.notice and t.notice.title|length > 24 %}…{% endif %}
+    </div>
+    <div class="task-card__top">
+        <a href="/tasks/{{ t.id }}" class="task-title" {{ 'style="text-decoration:line-through"'|safe if done else '' }}>{{ t.title }}</a>
+        {% if t.priority in ['high', 'urgent'] %}
+        <span class="tag {{ 'tag-urgent' if t.priority == 'urgent' else 'tag-high' }}">{{ '紧急' if t.priority == 'urgent' else '高' }}</span>
+        {% endif %}
+    </div>
+    <div class="task-meta" style="margin-top:6px;">
+        {% if t.assignee %}负责人：{{ t.assignee.full_name or t.assignee.username }}{% else %}<span class="text-warning">未分配负责人</span>{% endif %}
+    </div>
+    <div class="task-card__footer">
+        <div class="task-meta">
+            {% if done and t.completed_at %}
+                完成于 {{ t.completed_at.strftime('%m-%d %H:%M') }}
+            {% elif t.planned_end %}
+                截止 {{ t.planned_end.strftime('%m-%d') }}
+                <span class="{{ 'text-danger' if days < 3 else 'text-secondary' }}">
+                    {% if days < 0 %}（逾期 {{ -days }} 天）{% elif days == 0 %}（今天）{% else %}（{{ days }} 天）{% endif %}
+                </span>
+            {% else %}未设置截止日期{% endif %}
+        </div>
+        {% if not done %}
+        <select data-status-control aria-label="更新“{{ t.title }}”状态"
+                onchange="updateTaskStatus('{{ t.id }}', this.value)">
+            <option value="todo" {{ 'selected' if t.status == 'todo' else '' }}>待开始</option>
+            <option value="in_progress" {{ 'selected' if t.status == 'in_progress' else '' }}>进行中</option>
+            <option value="done">已完成</option>
+        </select>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-toolbar">
+    <div>
+        <h2>投标准备任务</h2>
+        <p>按截止日期排序；拖动卡片即可更新状态。</p>
+    </div>
+    <div class="quick-filters">
+        <a href="/tasks" class="quick-filter {{ 'active' if not filter_mine and not filter_overdue else '' }}">全部任务</a>
+        <a href="/tasks?mine=true" class="quick-filter {{ 'active' if filter_mine else '' }}">只看我的</a>
+        <a href="/tasks?overdue=true" class="quick-filter {{ 'active' if filter_overdue else '' }}">已逾期</a>
+    </div>
+</div>
+
+<div class="filter-bar">
+    <form action="/tasks" method="get" class="flex-row" style="flex: 1;">
+        <select name="notice_id" aria-label="按标讯筛选" style="width: 260px;">
+            <option value="">全部标讯</option>
+            {% for n in notices %}
+            <option value="{{ n.id }}" {{ 'selected' if filter_notice_id == n.id else '' }}>{{ n.title[:38] }}{% if n.title|length > 38 %}…{% endif %}</option>
+            {% endfor %}
+        </select>
+        <select name="assignee_id" aria-label="按负责人筛选" style="width: 160px;">
+            <option value="">全部负责人</option>
+            {% for u in users %}
+            <option value="{{ u.id }}" {{ 'selected' if filter_assignee_id == u.id else '' }}>{{ u.full_name or u.username }}</option>
+            {% endfor %}
+        </select>
+        <input type="hidden" name="mine" value="{{ 'true' if filter_mine else 'false' }}">
+        <input type="hidden" name="overdue" value="{{ 'true' if filter_overdue else 'false' }}">
+        <button type="submit" class="btn btn-primary">应用</button>
+        <a href="/tasks" class="btn">重置</a>
+    </form>
+</div>
+
+<div class="kanban" x-data="kanbanApp()">
+    <section class="kanban-col">
+        <h3>待开始 <span class="count">{{ todo|length }}</span></h3>
+        <div class="sortable-list" data-status="todo">
+            {% for t in todo %}{{ task_card(t) }}{% else %}
+            <div class="empty-state" style="padding:30px 10px;"><div class="empty-desc">暂无待开始任务</div></div>
+            {% endfor %}
+        </div>
+    </section>
+    <section class="kanban-col">
+        <h3>进行中 <span class="count">{{ in_progress|length }}</span></h3>
+        <div class="sortable-list" data-status="in_progress">
+            {% for t in in_progress %}{{ task_card(t) }}{% else %}
+            <div class="empty-state" style="padding:30px 10px;"><div class="empty-desc">暂无进行中任务</div></div>
+            {% endfor %}
+        </div>
+    </section>
+    <section class="kanban-col">
+        <h3>
+            <span>已完成 <span class="count">{{ done|length }}</span></span>
+            <button type="button" class="completed-toggle" data-collapse-column>收起</button>
+        </h3>
+        <div class="sortable-list" data-status="done">
+            {% for t in done %}{{ task_card(t, true) }}{% else %}
+            <div class="empty-state" style="padding:30px 10px;"><div class="empty-desc">暂无已完成任务</div></div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1/Sortable.min.js"></script>
+{% endblock %}

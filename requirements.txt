@@ -1,0 +1,12 @@
+fastapi>=0.115
+uvicorn[standard]>=0.34
+sqlalchemy>=2.0
+aiosqlite>=0.20
+jinja2>=3.1
+python-multipart>=0.0
+httpx>=0.28
+beautifulsoup4>=4.12
+apscheduler>=3.10
+bcrypt>=4.0
+openpyxl>=3.1
+pydantic>=2.10

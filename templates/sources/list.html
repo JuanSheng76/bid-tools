@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}标讯来源 - 投标辅助工具{% endblock %}
+{% block header_title %}标讯来源管理{% endblock %}
+{% block content %}
+
+<div class="flex-between mb">
+    <span class="text-secondary">配置标讯采集来源，系统将定时自动爬取</span>
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('add-source-form').style.display='block'">+ 添加来源</button>
+</div>
+
+<!-- 添加/编辑表单 -->
+<div id="add-source-form" class="card" style="display: {{ 'block' if edit_source else 'none' }};">
+    <h4>{{ '编辑来源' if edit_source else '添加标讯来源' }}</h4>
+    <form method="post" action="{{ '/sources/' + edit_source.id + '/edit' if edit_source else '/sources' }}">
+        <div class="grid-2">
+            <div class="form-group">
+                <label>来源名称 *</label>
+                <input type="text" name="name" value="{{ edit_source.name if edit_source else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label>入口URL *</label>
+                <input type="url" name="url" value="{{ edit_source.url if edit_source else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label>网站类型</label>
+                <select name="website_type">
+                    <option value="government_procurement" {{ 'selected' if edit_source and edit_source.website_type == 'government_procurement' else '' }}>政府采购</option>
+                    <option value="public_resource" {{ 'selected' if edit_source and edit_source.website_type == 'public_resource' else '' }}>公共资源交易</option>
+                    <option value="enterprise" {{ 'selected' if edit_source and edit_source.website_type == 'enterprise' else '' }}>企业招标</option>
+                    <option value="pv_industry" {{ 'selected' if edit_source and edit_source.website_type == 'pv_industry' else '' }}>光伏行业</option>
+                    <option value="other" {{ 'selected' if edit_source and edit_source.website_type == 'other' else '' }}>其他</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>地区</label>
+                <input type="text" name="region" value="{{ edit_source.region if edit_source else '' }}" placeholder="如：全国/广东/贵州">
+            </div>
+            <div class="form-group">
+                <label>爬取间隔（分钟）</label>
+                <input type="number" name="scrape_interval_minutes" value="{{ edit_source.scrape_interval_minutes if edit_source else 60 }}">
+            </div>
+            <div class="form-group">
+                <label>启用</label>
+                <select name="is_active">
+                    <option value="true" {{ 'selected' if not edit_source or edit_source.is_active else '' }}>是</option>
+                    <option value="false" {{ 'selected' if edit_source and not edit_source.is_active else '' }}>否</option>
+                </select>
+            </div>
+        </div>
+
+        <details class="mt">
+            <summary>登录配置（需要登录的网站）</summary>
+            <div class="grid-2 mt">
+                <div class="form-group">
+                    <label>需要登录</label>
+                    <input type="checkbox" name="requires_login" {{ 'checked' if edit_source and edit_source.requires_login else '' }} style="width: auto;">
+                </div>
+                <div class="form-group">
+                    <label>登录用户名</label>
+                    <input type="text" name="login_username" value="{{ edit_source.login_username if edit_source else '' }}">
+                </div>
+                <div class="form-group">
+                    <label>登录密码</label>
+                    <input type="password" name="login_password" value="{{ edit_source.login_password if edit_source else '' }}">
+                </div>
+            </div>
+        </details>
+
+        <details class="mt">
+            <summary>爬取规则配置（JSON）</summary>
+            <div class="form-group mt">
+                <label>scrape_config (JSON格式)</label>
+                <textarea name="scrape_config" rows="12" style="font-family: monospace; font-size: 12px;">{{ edit_source.scrape_config | tojson(indent=2) if edit_source and edit_source.scrape_config else '{\n  "list_url": "",\n  "item_selector": "",\n  "fields": {},\n  "detail_fields": {},\n  "pagination": {"param": "page", "max": 5}\n}' }}</textarea>
+                <div class="text-secondary" style="font-size: 12px;">
+                    配置格式说明：list_url(列表页URL模板,可用{page})、item_selector(CSS选择器)、fields(列表字段提取)、detail_fields(详情字段提取)、pagination(分页配置)
+                </div>
+            </div>
+        </details>
+
+        <button type="submit" class="btn btn-primary">{{ '保存修改' if edit_source else '添加来源' }}</button>
+        <button type="button" class="btn" onclick="document.getElementById('add-source-form').style.display='none'">取消</button>
+    </form>
+</div>
+
+<!-- 来源列表 -->
+<div class="grid-2">
+    {% for s in sources %}
+    <div class="card">
+        <div class="flex-between mb">
+            <h4 style="margin: 0;">{{ s.name }}</h4>
+            {% if s.is_active %}<span class="badge badge-worth">启用</span>
+            {% else %}<span class="badge badge-completed">停用</span>{% endif %}
+        </div>
+        <div class="text-secondary mb" style="font-size: 13px;">
+            <div class="source-url">{{ s.url[:50] }}</div>
+            <div>📂 {{ s.website_type }} {% if s.region %}| 📍 {{ s.region }}{% endif %}</div>
+            <div>⏱ 每{{ s.scrape_interval_minutes }}分钟 |
+                {% if s.last_scraped_at %}
+                上次爬取: {{ s.last_scraped_at.strftime('%m-%d %H:%M') }}
+                ({{ s.last_status or '未知' }})
+                {% else %}
+                从未爬取
+                {% endif %}
+            </div>
+        </div>
+        <div class="flex-row">
+            <form method="post" action="/sources/{{ s.id }}/scrape" class="inline-form"><button class="btn btn-sm btn-primary">🔄 立即爬取</button></form>
+            <a href="/sources/{{ s.id }}/edit" class="btn btn-sm" onclick="document.getElementById('add-source-form').style.display='block'">编辑</a>
+            <form method="post" action="/sources/{{ s.id }}/delete" class="inline-form" data-confirm="确定删除来源“{{ s.name }}”吗？"><button class="btn btn-sm btn-danger">删除</button></form>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state" style="grid-column: 1 / -1;">
+        <div class="empty-icon empty-icon--notice"></div>
+        <div class="empty-title">暂无标讯来源</div>
+        <div class="empty-desc">添加标讯来源后，系统将定时自动采集标讯信息</div>
+    </div>
+    {% endfor %}
+</div>
+
+{% endblock %}

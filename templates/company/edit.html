@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}公司资料 - 投标辅助工具{% endblock %}
+{% block header_title %}公司资料{% endblock %}
+{% block content %}
+
+<!-- 基本信息 -->
+<div class="card">
+    <h4>基本信息</h4>
+    <form method="post" action="/company">
+        <div class="grid-2">
+            <div class="form-group">
+                <label>公司名称</label>
+                <input type="text" name="name" value="{{ company.name if company else '' }}">
+            </div>
+            <div class="form-group">
+                <label>统一社会信用代码</label>
+                <input type="text" name="credit_code" value="{{ company.credit_code if company else '' }}">
+            </div>
+            <div class="form-group">
+                <label>法定代表人</label>
+                <input type="text" name="legal_person" value="{{ company.legal_person if company else '' }}">
+            </div>
+            <div class="form-group">
+                <label>注册地址</label>
+                <input type="text" name="address" value="{{ company.address if company else '' }}">
+            </div>
+            <div class="form-group">
+                <label>默认联系人</label>
+                <input type="text" name="contact_person" value="{{ company.contact_person if company else '' }}">
+            </div>
+            <div class="form-group">
+                <label>默认联系电话</label>
+                <input type="text" name="contact_phone" value="{{ company.contact_phone if company else '' }}">
+            </div>
+            <div class="form-group">
+                <label>默认联系邮箱</label>
+                <input type="email" name="contact_email" value="{{ company.contact_email if company else '' }}">
+            </div>
+        </div>
+
+        <details class="form-section">
+            <summary>银行与税务信息（低频）</summary>
+            <div class="form-section__body grid-2">
+                <div class="form-group">
+                    <label>开户行</label>
+                    <input type="text" name="bank_name" value="{{ company.bank_info.bank_name if company and company.bank_info else '' }}">
+                </div>
+                <div class="form-group">
+                    <label>银行账号</label>
+                    <input type="text" name="account_no" value="{{ company.bank_info.account_no if company and company.bank_info else '' }}">
+                </div>
+                <div class="form-group">
+                    <label>纳税人识别号</label>
+                    <input type="text" name="tax_no" value="{{ company.bank_info.tax_no if company and company.bank_info else '' }}">
+                </div>
+            </div>
+        </details>
+        <button type="submit" class="btn btn-primary">保存基本信息</button>
+    </form>
+</div>
+
+<!-- 资质证书 -->
+<div class="card mt">
+    <div class="flex-between mb">
+        <h4>资质证书</h4>
+        <button class="btn btn-sm btn-primary" onclick="document.getElementById('add-qual-form').style.display='block'">+ 添加资质</button>
+    </div>
+
+    <div id="add-qual-form" style="display: none;" class="card mb" >
+        <form method="post" action="/company/qualifications/add">
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>资质名称 *</label>
+                    <input type="text" name="qual_name" required>
+                </div>
+                <div class="form-group">
+                    <label>资质等级</label>
+                    <input type="text" name="qual_level" placeholder="如：甲级/一级">
+                </div>
+                <div class="form-group">
+                    <label>证书编号</label>
+                    <input type="text" name="cert_no">
+                </div>
+                <div class="form-group">
+                    <label>发证机关</label>
+                    <input type="text" name="issuing_authority">
+                </div>
+                <div class="form-group">
+                    <label>发证日期</label>
+                    <input type="date" name="issue_date">
+                </div>
+                <div class="form-group">
+                    <label>到期日期</label>
+                    <input type="date" name="expiry_date">
+                </div>
+                <div class="form-group">
+                    <label>永久有效</label>
+                    <input type="checkbox" name="is_permanent" style="width: auto;">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">添加</button>
+            <button type="button" class="btn btn-sm" onclick="document.getElementById('add-qual-form').style.display='none'">取消</button>
+        </form>
+    </div>
+
+    {% if company and company.qualifications %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>名称</th><th>等级</th><th>编号</th><th>发证机关</th><th>到期日期</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+                {% for q in company.qualifications %}
+                <tr>
+                    <td>{{ q.name }}</td>
+                    <td>{{ q.level or '-' }}</td>
+                    <td>{{ q.cert_no or '-' }}</td>
+                    <td>{{ q.issuing_authority or '-' }}</td>
+                    <td>{{ '永久' if q.is_permanent else (q.expiry_date or '-') }}</td>
+                    <td><form method="post" action="/company/qualifications/{{ loop.index0 }}/delete" class="inline-form" data-confirm="确定删除资质“{{ q.name }}”吗？"><button class="btn btn-sm btn-danger">删除</button></form></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding: 30px 20px;">
+        <div class="empty-icon empty-icon--notice"></div>
+        <div class="empty-desc" style="font-size: 13px;">暂无资质证书，请添加</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 业绩 -->
+<div class="card mt">
+    <div class="flex-between mb">
+        <h4>业绩记录</h4>
+        <button class="btn btn-sm btn-primary" onclick="document.getElementById('add-perf-form').style.display='block'">+ 添加业绩</button>
+    </div>
+
+    <div id="add-perf-form" style="display: none;" class="card mb">
+        <form method="post" action="/company/performances/add">
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>项目名称 *</label>
+                    <input type="text" name="project_name" required>
+                </div>
+                <div class="form-group">
+                    <label>项目类型</label>
+                    <select name="project_type">
+                        <option value="pv_testing">光伏检测</option>
+                        <option value="bidding_agency">招标代理</option>
+                        <option value="government_procurement">政府采购</option>
+                        <option value="engineering">工程建设</option>
+                        <option value="other">其他</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>合同金额（万元）</label>
+                    <input type="number" step="0.01" name="contract_amount">
+                </div>
+                <div class="form-group">
+                    <label>业主单位</label>
+                    <input type="text" name="client_name">
+                </div>
+                <div class="form-group">
+                    <label>合同日期</label>
+                    <input type="date" name="contract_date">
+                </div>
+                <div class="form-group">
+                    <label>项目描述</label>
+                    <input type="text" name="description">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">添加</button>
+            <button type="button" class="btn btn-sm" onclick="document.getElementById('add-perf-form').style.display='none'">取消</button>
+        </form>
+    </div>
+
+    {% if company and company.performances %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>项目名称</th><th>类型</th><th>金额(万元)</th><th>业主</th><th>日期</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+                {% for p in company.performances %}
+                <tr>
+                    <td>{{ p.project_name }}</td>
+                    <td>{{ p.project_type or '-' }}</td>
+                    <td>{{ p.contract_amount or '-' }}</td>
+                    <td>{{ p.client_name or '-' }}</td>
+                    <td>{{ p.contract_date or '-' }}</td>
+                    <td><form method="post" action="/company/performances/{{ loop.index0 }}/delete" class="inline-form" data-confirm="确定删除业绩“{{ p.project_name }}”吗？"><button class="btn btn-sm btn-danger">删除</button></form></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding: 30px 20px;">
+        <div class="empty-icon empty-icon--notice"></div>
+        <div class="empty-desc" style="font-size: 13px;">暂无业绩记录，请添加</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 人员 -->
+<div class="card mt">
+    <div class="flex-between mb">
+        <h4>人员信息</h4>
+        <button class="btn btn-sm btn-primary" onclick="document.getElementById('add-person-form').style.display='block'">+ 添加人员</button>
+    </div>
+
+    <div id="add-person-form" style="display: none;" class="card mb">
+        <form method="post" action="/company/personnel/add">
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>姓名 *</label>
+                    <input type="text" name="person_name" required>
+                </div>
+                <div class="form-group">
+                    <label>职位</label>
+                    <input type="text" name="position">
+                </div>
+                <div class="form-group">
+                    <label>持证情况</label>
+                    <input type="text" name="certifications" placeholder="如：一级建造师,注册检测工程师">
+                </div>
+                <div class="form-group">
+                    <label>联系电话</label>
+                    <input type="text" name="person_phone">
+                </div>
+                <div class="form-group">
+                    <label>邮箱</label>
+                    <input type="email" name="person_email">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">添加</button>
+            <button type="button" class="btn btn-sm" onclick="document.getElementById('add-person-form').style.display='none'">取消</button>
+        </form>
+    </div>
+
+    {% if company and company.personnel %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>姓名</th><th>职位</th><th>持证</th><th>电话</th><th>邮箱</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+                {% for p in company.personnel %}
+                <tr>
+                    <td>{{ p.name }}</td>
+                    <td>{{ p.position or '-' }}</td>
+                    <td>{{ p.certifications or '-' }}</td>
+                    <td>{{ p.phone or '-' }}</td>
+                    <td>{{ p.email or '-' }}</td>
+                    <td><form method="post" action="/company/personnel/{{ loop.index0 }}/delete" class="inline-form" data-confirm="确定删除人员“{{ p.name }}”吗？"><button class="btn btn-sm btn-danger">删除</button></form></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding: 30px 20px;">
+        <div class="empty-icon empty-icon--notice"></div>
+        <div class="empty-desc" style="font-size: 13px;">暂无人员信息，请添加</div>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
