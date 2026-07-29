@@ -54,7 +54,7 @@
 </div>
 
 <div class="flex-between mb" style="font-size: 13px; color: var(--text-secondary);">
-    <span>共 {{ total }} 条标讯{% if keyword %}，搜索“{{ keyword }}”{% endif %}</span>
+    <span>共 {{ total }} 条标讯{% if keyword %}，搜索"{{ keyword }}"{% endif %}</span>
     <div class="flex-row">
         {% set query = 'status=' + status + '&decision=' + decision + '&view=' + view + '&sort=' + sort + '&keyword=' + keyword %}
         {% if page > 1 %}<a href="/notices?{{ query }}&page={{ page - 1 }}" class="btn btn-sm">上一页</a>{% endif %}
@@ -142,7 +142,7 @@
                                     {% if n.bid_decision == 'bid' and n.status not in ['completed', 'ignored'] %}
                                     <a href="/tasks/generate/{{ n.id }}">生成倒排计划</a>
                                     {% endif %}
-                                    <form method="post" action="/notices/{{ n.id }}/delete" data-confirm="确定删除“{{ n.title }}”吗？删除后无法恢复。">
+                                    <form method="post" action="/notices/{{ n.id }}/delete" data-confirm="确定删除"{{ n.title }}"吗？删除后无法恢复。">
                                         <button type="submit" class="text-danger">删除</button>
                                     </form>
                                 </div>

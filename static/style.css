@@ -1329,13 +1329,26 @@ a:hover {
 }
 
 .grid-2 {
-    grid-template-columns: minmax(0, 1.55fr) minmax(320px, .85fr);
     gap: 15px;
 }
 
 .grid-3,
 .grid-4 {
     gap: 15px;
+}
+
+/* 仪表盘主区+侧栏不对称布局 */
+.dashboard-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(320px, .85fr);
+    gap: 15px;
+}
+
+/* 详情页/表单对称双列 */
+.detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
 }
 
 .card h3,
@@ -2304,6 +2317,7 @@ table td a,
 .quick-filter {
     color: var(--ops-text-soft);
     background: #fff;
+    border-left: 2px solid transparent;
 }
 
 .quick-filter:hover,
@@ -2311,6 +2325,11 @@ table td a,
     border-color: #a9c7e4;
     color: var(--ops-primary);
     background: #edf5fd;
+}
+
+.quick-filter.active {
+    border-left-color: var(--ops-primary);
+    font-weight: 600;
 }
 
 /* 表单 */
@@ -2387,7 +2406,8 @@ select option {
 }
 
 .confirm-dialog,
-.upload-overlay__card {
+.upload-overlay__card,
+.abandon-dialog {
     border-color: var(--ops-line);
     color: var(--ops-text);
     background: #fff;
@@ -2395,8 +2415,166 @@ select option {
 }
 
 .confirm-dialog::backdrop,
-.upload-overlay {
+.upload-overlay,
+.abandon-dialog::backdrop {
     background: rgba(19, 37, 57, .48);
+}
+
+.abandon-dialog {
+    width: min(480px, calc(100vw - 40px));
+    border: 1px solid var(--ops-line);
+    border-radius: 13px;
+    padding: 0;
+}
+
+.abandon-dialog::backdrop {
+    backdrop-filter: blur(2px);
+}
+
+.abandon-dialog__header {
+    padding: 22px 24px 16px;
+    border-bottom: 1px solid var(--ops-line);
+}
+
+.abandon-dialog__header h3 {
+    margin: 0 0 4px;
+    font-size: 17px;
+}
+
+.abandon-dialog__header p {
+    margin: 0;
+    color: var(--ops-muted);
+    font-size: 12px;
+}
+
+.abandon-dialog__presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 16px 24px;
+}
+
+.abandon-preset {
+    display: inline-block;
+    padding: 6px 14px;
+    border: 1px solid var(--ops-line);
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--ops-muted);
+    cursor: pointer;
+    transition: border-color .18s ease, color .18s ease, background .18s ease;
+    background: #f7f9fc;
+    user-select: none;
+}
+
+.abandon-preset:hover {
+    color: var(--ops-danger);
+    border-color: rgba(208, 82, 93, .4);
+    background: var(--danger-light);
+}
+
+.abandon-preset.selected {
+    color: #fff;
+    background: var(--ops-danger);
+    border-color: var(--ops-danger);
+}
+
+.abandon-dialog form {
+    padding: 0 24px 20px;
+}
+
+.abandon-dialog .form-group {
+    margin-bottom: 16px;
+}
+
+.abandon-dialog textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--ops-line);
+    border-radius: 7px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    color: var(--ops-text);
+    background: var(--ops-input);
+}
+
+.abandon-dialog textarea:focus {
+    border-color: #6c9dca;
+    box-shadow: 0 0 0 3px rgba(37, 99, 168, .09);
+    outline: none;
+}
+
+.abandon-dialog__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* 详情页决策标签 */
+.decision-tag {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 500;
+}
+
+.decision-tag--bid {
+    border: 1px solid #bee2da;
+    color: #117362;
+    background: #eaf7f4;
+}
+
+.decision-tag--no-bid {
+    border: 1px solid #efc8cc;
+    color: #b93f4a;
+    background: #fff0f1;
+}
+
+.decision-tag--abandon {
+    border: 1px solid #ecd7ad;
+    color: #9c630b;
+    background: #fff6e7;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 详情页操作栏 */
+.detail-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.detail-actions__left,
+.detail-actions__right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* 进度条（评估分数等） */
+.ops-progress {
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e8eef4;
+}
+
+.ops-progress > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--ops-primary), var(--ops-primary-hover));
 }
 
 .confirm-dialog p,

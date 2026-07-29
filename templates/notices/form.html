@@ -9,7 +9,7 @@
 <form method="post" action="/notices" style="max-width: 920px;">
     <section class="form-section">
         <div class="form-section__header"><h3>基本信息</h3><p>用于识别项目和追溯公告来源。</p></div>
-        <div class="grid-2">
+        <div class="detail-grid">
             <div class="form-group" style="grid-column:1/-1;">
                 <label for="title">标讯标题 *</label>
                 <input id="title" type="text" name="title" required autofocus placeholder="输入完整标讯标题">
@@ -23,7 +23,7 @@
 
     <section class="form-section">
         <div class="form-section__header"><h3>关键时间</h3><p>这些日期将用于提醒和倒排计划。</p></div>
-        <div class="grid-2">
+        <div class="detail-grid">
             <div class="form-group"><label for="registration_deadline">报名截止</label><input id="registration_deadline" type="datetime-local" name="registration_deadline" value="{{ defaults.registration_deadline }}"></div>
             <div class="form-group"><label for="bid_deadline">投标截止</label><input id="bid_deadline" type="datetime-local" name="bid_deadline" value="{{ defaults.bid_deadline }}"></div>
             <div class="form-group"><label for="bid_opening_date">开标时间</label><input id="bid_opening_date" type="datetime-local" name="bid_opening_date" value="{{ defaults.bid_opening_date }}"></div>
@@ -38,9 +38,9 @@
     </section>
 
     <details class="form-section">
-        <summary>费用、平台与联系信息（选填）</summary>
+        <summary><span>费用、平台与联系信息</span><small class="section-kicker">选填</small></summary>
         <div class="form-section__body">
-            <div class="grid-2">
+            <div class="detail-grid">
                 <div class="form-group"><label for="bid_document_fee">标书费</label><input id="bid_document_fee" type="number" min="0" step="0.01" name="bid_document_fee" placeholder="单位：元"></div>
                 <div class="form-group"><label for="bid_bond_amount">投标保证金</label><input id="bid_bond_amount" type="number" min="0" step="0.1" name="bid_bond_amount" placeholder="单位：万元"></div>
                 <div class="form-group"><label for="contact_person">联系人</label><input id="contact_person" type="text" name="contact_person"></div>
