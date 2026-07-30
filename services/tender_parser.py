@@ -716,8 +716,198 @@ def match_personnel(scoring: dict, company_personnel: list) -> list[dict]:
 
 # ====== 任务清单同步 ======
 
-async def enrich_task_checklists(notice_id: str, db: AsyncSession, important_notes: list[dict]) -> int:
-    """将注意事项追加到对应 task_type 的 Task.checklist 中（去重）"""
+# 评分项 category → task_type 映射
+_SCORING_CATEGORY_TO_TASK = {
+    "qualification": "qualifications",
+    "performance": "certs",
+    "personnel": "certs",
+    "technical": "writing",
+    "price": "pricing",
+    "other": "certs",  # 兜底放到证书/业绩
+}
+
+
+def _build_sync_items(tender_analysis: dict) -> list[dict]:
+    """从 tender_analysis 提取所有待同步条目，返回 [{task_type, text}] 列表
+
+    覆盖三个数据源：
+    1. important_notes（已有 task_type）
+    2. qualification_requirements（按字段映射到 task_type）
+    3. scoring_criteria.items（按 category 映射到 task_type）
+    """
+    items = []
+
+    # ---- 1. important_notes（LLM 已分类或规则已分类） ----
+    for note in tender_analysis.get("important_notes", []) or []:
+        task_type = note.get("task_type", "")
+        text = note.get("text", "")
+        if task_type and text:
+            items.append({"task_type": task_type, "text": f"[注意事项] {text}"})
+
+    # ---- 2. qualification_requirements ----
+    qual = tender_analysis.get("qualification_requirements", {}) or {}
+
+    # 2a. 所需证书 → qualifications
+    for cert in qual.get("required_certificates", []) or []:
+        name = cert.get("name", "")
+        if not name:
+            continue
+        detail = cert.get("detail", "")
+        level = cert.get("level", "")
+        matched = "✓已具备" if cert.get("matched") else "✗需准备"
+        parts = [f"[证书-{matched}] {name}"]
+        if level:
+            parts.append(f"等级: {level}")
+        if detail:
+            parts.append(detail[:200])
+        items.append({"task_type": "qualifications", "text": " | ".join(parts)})
+
+    # 2b. 所需承诺函 → qualifications
+    for c in qual.get("required_commitments", []) or []:
+        name = c.get("name", "")
+        if not name:
+            continue
+        detail = c.get("detail", "")
+        fmt = c.get("format_required", "未说明")
+        parts = [f"[承诺函] {name}"]
+        if fmt != "未说明":
+            parts.append(f"格式: {fmt}")
+        if detail:
+            parts.append(detail[:200])
+        items.append({"task_type": "qualifications", "text": " | ".join(parts)})
+
+    # 2c. 盖章要求 → stamp
+    stamping = qual.get("stamping", {}) or {}
+    stamp_reqs = stamping.get("requirements", []) or []
+    stamp_text = stamping.get("requirements_text", "")
+    if stamp_reqs:
+        items.append({
+            "task_type": "stamp",
+            "text": f"[盖章要求] {'；'.join(str(r) for r in stamp_reqs)}"
+        })
+    elif stamp_text:
+        items.append({"task_type": "stamp", "text": f"[盖章要求] {stamp_text[:300]}"})
+
+    # 2d. 密封/装订要求 → format
+    sealing = qual.get("sealing", {}) or {}
+    copies = sealing.get("copies", "")
+    packaging = sealing.get("packaging", "")
+    seal_text = sealing.get("requirements_text", "")
+    seal_parts = []
+    if copies:
+        seal_parts.append(copies)
+    if packaging:
+        seal_parts.append(packaging)
+    if seal_parts:
+        items.append({"task_type": "format", "text": f"[密封/装订] {'；'.join(seal_parts)}"})
+    elif seal_text:
+        items.append({"task_type": "format", "text": f"[密封/装订] {seal_text[:300]}"})
+
+    # 2e. 递交要求 → get_docs
+    submission = qual.get("submission", {}) or {}
+    sub_parts = []
+    if submission.get("method"):
+        sub_parts.append(f"方式: {submission['method']}")
+    if submission.get("deadline"):
+        sub_parts.append(f"截止: {submission['deadline']}")
+    if submission.get("location"):
+        sub_parts.append(f"地点: {submission['location']}")
+    if sub_parts:
+        items.append({"task_type": "get_docs", "text": f"[递交要求] {'；'.join(sub_parts)}"})
+
+    # 2f. 保证金 → pricing
+    fin = qual.get("financial_requirements", {}) or {}
+    fin_parts = []
+    if fin.get("bid_bond") is not None:
+        fin_parts.append(f"投标保证金: {fin['bid_bond']}万元")
+    if fin.get("bid_bond_form"):
+        fin_parts.append(f"形式: {fin['bid_bond_form']}")
+    if fin.get("performance_bond") is not None:
+        fin_parts.append(f"履约保证金: {fin['performance_bond']}万元")
+    if fin.get("other"):
+        fin_parts.append(fin["other"])
+    if fin_parts:
+        items.append({"task_type": "pricing", "text": f"[保证金] {'；'.join(fin_parts)}"})
+
+    # ---- 3. scoring_criteria.items → 按 category 映射 ----
+    scoring = tender_analysis.get("scoring_criteria", {}) or {}
+    for item in scoring.get("items", []) or []:
+        if not isinstance(item, dict):
+            continue
+        category = item.get("category", "other")
+        task_type = _SCORING_CATEGORY_TO_TASK.get(category, "certs")
+        label = item.get("label", "")
+        max_points = item.get("max_points", 0)
+        scoring_method = item.get("scoring_method", "")
+        reqs = item.get("requirements", []) or []
+
+        parts = [f"[评分-{label}] {max_points}分"]
+        if reqs:
+            parts.append("要求: " + "；".join(str(r)[:100] for r in reqs[:3]))
+        elif scoring_method:
+            parts.append(scoring_method[:200])
+        items.append({"task_type": task_type, "text": " | ".join(parts)})
+
+    return items
+
+
+def _print_analysis_summary(analysis: dict) -> None:
+    """诊断打印：显示 tender_analysis 各字段的数据量，定位为何 _build_sync_items 返回空"""
+    if not analysis:
+        print("[sync]   ❌ tender_analysis 本身为 None/空", flush=True)
+        return
+
+    print(f"[sync]   tender_analysis 顶层键: {list(analysis.keys())}", flush=True)
+
+    # important_notes
+    notes = analysis.get("important_notes", []) or []
+    print(f"[sync]   important_notes: {len(notes)} 条", flush=True)
+    for n in notes[:3]:
+        print(f"[sync]     task_type={n.get('task_type', '?')}, text={n.get('text', '')[:60]}", flush=True)
+
+    # qualification_requirements
+    qual = analysis.get("qualification_requirements", {}) or {}
+    if qual:
+        certs = qual.get("required_certificates", []) or []
+        commitments = qual.get("required_commitments", []) or []
+        stamp_reqs = qual.get("stamping", {}).get("requirements", []) or []
+        stamp_text = qual.get("stamping", {}).get("requirements_text", "") or ""
+        seal_copies = qual.get("sealing", {}).get("copies", "") or ""
+        seal_pkg = qual.get("sealing", {}).get("packaging", "") or ""
+        seal_text = qual.get("sealing", {}).get("requirements_text", "") or ""
+        subm_method = qual.get("submission", {}).get("method", "") or ""
+        subm_deadline = qual.get("submission", {}).get("deadline", "") or ""
+        subm_loc = qual.get("submission", {}).get("location", "") or ""
+        fin = qual.get("financial_requirements", {}) or {}
+        fin_bond = fin.get("bid_bond")
+        fin_perf = fin.get("performance_bond")
+        print(f"[sync]   qualification_requirements:", flush=True)
+        print(f"[sync]     required_certificates: {len(certs)}", flush=True)
+        print(f"[sync]     required_commitments: {len(commitments)}", flush=True)
+        print(f"[sync]     stamping.requirements: {len(stamp_reqs)}, stamping.text: {len(stamp_text)}字符", flush=True)
+        print(f"[sync]     sealing.copies: '{seal_copies}', packaging: '{seal_pkg}', text: {len(seal_text)}字符", flush=True)
+        print(f"[sync]     submission.method: '{subm_method}', deadline: '{subm_deadline}', location: '{subm_loc}'", flush=True)
+        print(f"[sync]     financial: bid_bond={fin_bond}, perf_bond={fin_perf}", flush=True)
+    else:
+        print(f"[sync]   qualification_requirements: 缺失或为空", flush=True)
+
+    # scoring_criteria
+    scoring = analysis.get("scoring_criteria", {}) or {}
+    items = scoring.get("items", []) or []
+    print(f"[sync]   scoring_criteria.items: {len(items)} 条", flush=True)
+    for item in items[:3]:
+        if isinstance(item, dict):
+            print(f"[sync]     category={item.get('category','?')}, label={item.get('label','')[:50]}, points={item.get('max_points',0)}", flush=True)
+
+
+async def enrich_task_checklists(notice_id: str, db: AsyncSession, tender_analysis: dict) -> int:
+    """将招标文件提取的关键信息同步到对应任务环节的 checklist 中（去重）
+
+    同步覆盖三个维度：
+    - important_notes → 按已有 task_type 映射
+    - qualification_requirements（证书/承诺函/盖章/密封/递交/保证金）→ 对应 task_type
+    - scoring_criteria.items → 按 category 映射到 qualifications/certs/writing/pricing
+    """
     from models import Task
 
     result = await db.execute(
@@ -725,34 +915,52 @@ async def enrich_task_checklists(notice_id: str, db: AsyncSession, important_not
     )
     tasks = result.scalars().all()
 
-    if not tasks or not important_notes:
+    if not tasks:
+        print(f"[sync] 标讯 {notice_id} 下没有任务，跳过同步。请先生成倒排计划。", flush=True)
         return 0
+
+    # 构建所有待同步条目
+    sync_items = _build_sync_items(tender_analysis)
+    if not sync_items:
+        print(f"[sync] 未从 tender_analysis 中提取到任何待同步条目", flush=True)
+        _print_analysis_summary(tender_analysis)
+        return 0
+
+    print(f"[sync] 构建了 {len(sync_items)} 条待同步条目", flush=True)
+    for item in sync_items:
+        print(f"[sync]   → [{item['task_type']}] {item['text'][:80]}...", flush=True)
 
     # 按 task_type 分组现有任务
     tasks_by_type = {}
     for t in tasks:
         tasks_by_type.setdefault(t.task_type, []).append(t)
 
+    print(f"[sync] 现有任务类型: {list(tasks_by_type.keys())}", flush=True)
+
     added_count = 0
 
-    for note in important_notes:
-        task_type = note["task_type"]
+    for item in sync_items:
+        task_type = item["task_type"]
         if task_type not in tasks_by_type:
+            print(f"[sync] ⚠ 任务类型 '{task_type}' 不存在，跳过: {item['text'][:60]}", flush=True)
             continue
 
         for task in tasks_by_type[task_type]:
             checklist = list(task.checklist or [])
-            existing_texts = {item.get("text", "") for item in checklist}
+            existing_texts = {entry.get("text", "") for entry in checklist}
 
-            note_text = f"[招标文件] {note['text']}"
-            if note_text not in existing_texts:
-                checklist.append({"text": note_text, "done": False})
+            if item["text"] not in existing_texts:
+                checklist.append({"text": item["text"], "done": False})
                 task.checklist = checklist
                 added_count += 1
-                break  # 每个 note 只追加到一个 task
+                print(f"[sync] ✓ 已追加到任务 '{task.title}': {item['text'][:60]}", flush=True)
+                break  # 每条只追加到该类型的第一个任务
+            else:
+                print(f"[sync] ⊙ 已存在，跳过: {item['text'][:60]}", flush=True)
 
     if added_count > 0:
         await db.commit()
+        print(f"[sync] 同步完成: 共 {added_count} 条，已提交到数据库", flush=True)
 
     return added_count
 

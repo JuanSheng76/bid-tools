@@ -5,7 +5,7 @@
 <span id="tender-op-buttons" hx-swap-oob="innerHTML">
     <a href="/tender/recommend/{{ notice.id }}" class="btn btn-sm btn-primary">查看解析与推荐</a>
     <form method="post" action="/tender/enrich-tasks/{{ notice.id }}" class="inline-form">
-        <button type="submit" class="btn btn-sm btn-outline">同步到任务清单</button>
+        <button type="submit" class="btn btn-sm btn-outline">📥 同步全部提取信息到任务清单</button>
     </form>
 </span>
 
@@ -294,7 +294,7 @@
     {% endif %}
 
     <form method="post" action="/tender/enrich-tasks/{{ notice.id }}" class="inline-form" style="margin-top: 12px;">
-        <button type="submit" class="btn btn-sm btn-outline">📥 同步到任务清单（按类型自动映射去重）</button>
+        <button type="submit" class="btn btn-sm btn-outline">📥 同步全部提取信息到任务清单（资格/盖章/评分→对应环节）</button>
     </form>
 </div>
 {% endif %}

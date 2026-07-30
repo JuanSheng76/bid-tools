@@ -256,14 +256,27 @@ async def tender_enrich_tasks(
     if not notice.tender_analysis:
         return RedirectResponse(url=f"/notices/{notice_id}", status_code=303)
 
-    important_notes = notice.tender_analysis.get("important_notes", [])
-    if important_notes:
-        added = await enrich_task_checklists(notice_id, db, important_notes)
-        if added > 0:
-            # 刷新 notice 以获取更新后的任务
-            await db.refresh(notice)
+    # 先检查是否有任务
+    from models import Task
+    from sqlalchemy import func as sql_func
+    task_count = (await db.execute(
+        select(sql_func.count()).where(Task.notice_id == notice_id)
+    )).scalar() or 0
 
-    return RedirectResponse(url=f"/notices/{notice_id}#tender-analysis", status_code=303)
+    if task_count == 0:
+        return RedirectResponse(
+            url=f"/tasks?notice_id={notice_id}&just_synced=1&sync_error=no_tasks",
+            status_code=303
+        )
+
+    added = await enrich_task_checklists(notice_id, db, notice.tender_analysis)
+    if added > 0:
+        await db.refresh(notice)
+
+    return RedirectResponse(
+        url=f"/tasks?notice_id={notice_id}&just_synced=1&synced={added}",
+        status_code=303
+    )
 
 
 @router.get("/llm-status")

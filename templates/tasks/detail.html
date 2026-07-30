@@ -116,7 +116,7 @@
 
     <div>
         <!-- Checklist -->
-        <div class="card" x-data="checklistApp('{{ task.id }}', {{ task.checklist|tojson }})">
+        <div class="card" id="checklist" x-data="checklistApp('{{ task.id }}', {{ task.checklist|tojson }})">
             <h4>检查清单</h4>
             <template x-for="(item, idx) in items" :key="idx">
                 <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border);">

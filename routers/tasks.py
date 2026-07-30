@@ -10,7 +10,6 @@ from models import Task, BidNotice, User
 from auth import get_session
 from services.planner import generate_schedule, preview_schedule
 from templates_config import templates
-import config
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -22,6 +21,9 @@ async def task_kanban(
     assignee_id: str = "",
     mine: bool = False,
     overdue: bool = False,
+    synced: int = 0,
+    sync_error: str = "",
+    just_synced: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     session = get_session(request)
@@ -72,6 +74,9 @@ async def task_kanban(
         "filter_assignee_id": assignee_id,
         "filter_mine": mine,
         "filter_overdue": overdue,
+        "synced": synced,
+        "sync_error": sync_error,
+        "just_synced": just_synced,
     })
 
 
@@ -222,7 +227,7 @@ async def task_generate_form(request: Request, notice_id: str, db: AsyncSession 
     deadline = notice.bid_deadline or datetime.utcnow()
     target_deadline = deadline.strftime('%Y-%m-%dT%H:%M')
 
-    # 预览倒排计划（默认天数）
+    # 预览正排计划
     task_templates = preview_schedule(deadline)
 
     return templates.TemplateResponse("tasks/generate.html", {
@@ -232,6 +237,7 @@ async def task_generate_form(request: Request, notice_id: str, db: AsyncSession 
         "target_deadline": target_deadline,
         "task_templates": task_templates,
         "existing_tasks": existing_tasks,
+        "now": deadline,  # 传递给模板用于 today 计算
     })
 
 
@@ -268,18 +274,7 @@ async def task_generate_execute(
             await db.delete(t)
         await db.flush()
 
-    # 收集自定义天数
-    days_before_map = {}
-    for tpl in config.TASK_TEMPLATE:
-        task_type = tpl["task_type"]
-        days_str = form.get(f"days_before_{task_type}", "")
-        if days_str:
-            try:
-                days_before_map[task_type] = int(days_str)
-            except ValueError:
-                pass
-
-    tasks = await generate_schedule(notice, db, target_deadline=target_deadline, days_before_map=days_before_map)
+    tasks = await generate_schedule(notice, db, target_deadline=target_deadline)
 
     # 更新标讯状态
     if notice.status in ["new", "assessing", "worth"]:

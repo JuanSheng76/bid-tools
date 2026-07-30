@@ -5,6 +5,7 @@
 {% macro task_card(t, done=false) %}
 {% set nc = t.notice.id | notice_color if t.notice else None %}
 {% set days = (t.planned_end - now).days if t.planned_end else none %}
+{% set has_cl = t.checklist and t.checklist|length > 0 %}
 <div class="task-card {{ 'is-overdue' if days is not none and days < 0 and not done else '' }}"
      data-task-id="{{ t.id }}" {{ 'style="opacity:.72"'|safe if done else '' }}>
     <div class="task-notice-tag" title="{{ t.notice.title if t.notice else '' }}"
@@ -20,6 +21,32 @@
     <div class="task-meta" style="margin-top:6px;">
         {% if t.assignee %}负责人：{{ t.assignee.full_name or t.assignee.username }}{% else %}<span class="text-warning">未分配负责人</span>{% endif %}
     </div>
+
+    {# 内联 checklist #}
+    {% if has_cl %}
+    <div x-data="inlineChecklist('{{ t.id }}')"
+         data-checklist="{{ t.checklist|tojson|forceescape }}"
+         style="margin-top:8px;">
+        <details class="card-checklist-inline">
+            <summary style="cursor:pointer;font-size:10px;color:var(--ops-muted);padding:4px 0;user-select:none;">
+                📋 检查清单
+                <span x-text="doneCount + '/' + items.length"
+                      :style="doneCount === items.length ? 'color:#168b78' : 'color:var(--ops-muted)'"></span>
+            </summary>
+            <div style="max-height:160px;overflow-y:auto;margin-top:4px;padding-right:4px;">
+                <template x-for="(item, idx) in items" :key="idx">
+                    <div style="display:flex;align-items:flex-start;gap:6px;padding:3px 0;border-bottom:1px solid var(--ops-line-soft);font-size:11px;line-height:1.45;">
+                        <input type="checkbox" x-model="item.done" @change="save()"
+                               style="flex-shrink:0;margin-top:2px;accent-color:#168b78;cursor:pointer;">
+                        <span x-text="item.text.length > 120 ? item.text.slice(0,120) + '…' : item.text"
+                              :style="item.done ? 'text-decoration:line-through;color:var(--ops-muted)' : 'color:var(--ops-text-soft);word-break:break-all;'"></span>
+                    </div>
+                </template>
+            </div>
+        </details>
+    </div>
+    {% endif %}
+
     <div class="task-card__footer">
         <div class="task-meta">
             {% if done and t.completed_at %}
@@ -44,6 +71,38 @@
 {% endmacro %}
 
 {% block content %}
+{# 同步反馈横幅（仅同步操作后显示） #}
+{% if just_synced %}
+  {% if synced > 0 %}
+  <div id="sync-banner" style="background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; animation: fadeInDown 0.4s ease;">
+      <span style="font-size: 20px;">✅</span>
+      <div style="flex:1;">
+          <strong style="color: #2e7d32;">同步成功</strong>
+          <span style="color: #388e3c; font-size: 14px;">— 已将 <strong>{{ synced }}</strong> 条招标文件提取信息同步到对应任务环节的检查清单中。点击各任务查看。</span>
+      </div>
+      <button onclick="this.parentElement.remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#4caf50;" title="关闭">&times;</button>
+  </div>
+  {% elif sync_error == 'no_tasks' %}
+  <div id="sync-banner" style="background: #fff3e0; border: 1px solid #ffcc80; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; animation: fadeInDown 0.4s ease;">
+      <span style="font-size: 20px;">⚠️</span>
+      <div style="flex:1;">
+          <strong style="color: #e65100;">无法同步</strong>
+          <span style="color: #bf360c; font-size: 14px;">— 该标讯下还没有任务。请先生成<a href="/tasks/generate/{{ filter_notice_id }}" style="color: var(--primary); font-weight: 600;">倒排计划</a>，再同步招标文件提取信息。</span>
+      </div>
+      <button onclick="this.parentElement.remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#ff9800;" title="关闭">&times;</button>
+  </div>
+  {% else %}
+  <div id="sync-banner" style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; animation: fadeInDown 0.4s ease;">
+      <span style="font-size: 20px;">ℹ️</span>
+      <div style="flex:1;">
+          <strong style="color: #1565c0;">同步完成，未发现新条目</strong>
+          <span style="color: #1976d2; font-size: 14px;">— 招标文件中未提取到可同步的注意事项/资格/评分信息，或所有条目已存在。请检查<a href="/notices/{{ filter_notice_id }}#tender-analysis" style="color: var(--primary); font-weight: 600;">招标文件解析结果</a>。</span>
+      </div>
+      <button onclick="this.parentElement.remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#42a5f5;" title="关闭">&times;</button>
+  </div>
+  {% endif %}
+{% endif %}
+
 <div class="page-toolbar">
     <div>
         <h2>投标准备任务</h2>

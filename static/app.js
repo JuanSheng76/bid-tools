@@ -160,6 +160,41 @@ function checklistApp(taskId, initialItems) {
     };
 }
 
+// ====== Inline Checklist (看板卡片内联，Alpine.js) ======
+function inlineChecklist(taskId) {
+    return {
+        taskId: taskId,
+        items: [],
+
+        init() {
+            try {
+                const raw = this.$el.dataset.checklist;
+                this.items = JSON.parse(raw || '[]');
+            } catch (e) {
+                console.error('inlineChecklist: JSON parse error', e);
+                this.items = [];
+            }
+        },
+
+        get doneCount() {
+            return this.items.filter(i => i.done).length;
+        },
+
+        save() {
+            fetch(`/tasks/${this.taskId}/checklist`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ checklist: this.items }),
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) showToast('保存失败', 'error');
+            })
+            .catch(err => console.error(err));
+        },
+    };
+}
+
 // ====== Kanban (Alpine.js) ======
 function kanbanApp() {
     return {

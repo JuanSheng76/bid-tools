@@ -56,7 +56,7 @@
             {% else %}
             <a href="/tender/recommend/{{ notice.id }}" class="btn btn-sm btn-outline">查看解析与推荐</a>
             <form method="post" action="/tender/enrich-tasks/{{ notice.id }}" class="inline-form">
-                <button type="submit" class="btn btn-sm btn-outline">同步到任务清单</button>
+                <button type="submit" class="btn btn-sm btn-outline">📥 同步提取信息到任务清单</button>
             </form>
             {% endif %}
             </span>

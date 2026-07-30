@@ -944,6 +944,11 @@ details.form-section > .form-section__body { padding: 20px 22px; }
     to { transform: translateX(120%); opacity: 0; }
 }
 
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 /* ===== HTMX 页面过渡 ===== */
 .htmx-swapping {
     opacity: 0;
@@ -1789,6 +1794,38 @@ details.form-section[open] > summary {
 
 .kanban-col .task-card .task-meta {
     color: var(--ops-muted);
+}
+
+.checklist-badge {
+    padding: 2px 7px;
+    border: 1px solid var(--ops-line);
+    border-radius: 999px;
+    background: var(--ops-panel);
+    transition: border-color .18s ease, color .18s ease;
+}
+.checklist-badge:hover {
+    border-color: #168b78;
+    color: #168b78 !important;
+}
+
+/* 看板卡片内联 checklist */
+.card-checklist-inline summary {
+    list-style: none;
+}
+.card-checklist-inline summary::-webkit-details-marker {
+    display: none;
+}
+.card-checklist-inline summary::before {
+    content: '▸ ';
+    font-size: 9px;
+    transition: transform .15s ease;
+    display: inline-block;
+}
+.card-checklist-inline[open] summary::before {
+    transform: rotate(90deg);
+}
+.card-checklist-inline summary:hover {
+    color: var(--ops-primary) !important;
 }
 
 .sortable-ghost {
