@@ -1,4 +1,8 @@
 """FastAPI 主入口"""
+# ── 最先加载 .env，确保后续所有模块都能读到环境变量 ──
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import uuid
 from datetime import datetime

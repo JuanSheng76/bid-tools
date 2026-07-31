@@ -39,50 +39,64 @@
                 <span>标</span>
                 <div class="auth-brand-wordmark"><b>标策台</b><small>BID OPERATIONS</small></div>
             </div>
-            <div class="auth-heading">
-                <p class="auth-eyebrow">WELCOME BACK</p>
-                <h2>欢迎回来</h2>
-                <p>登录你的投标工作台，继续推进项目。</p>
-            </div>
-            <form class="auth-form" hx-post="/auth/login" hx-target="#login-error" hx-swap="innerHTML">
-                {% if demo_mode %}
-                <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:12px;text-align:center;font-size:13px;color:#92400e">
-                    <strong>演示账号：</strong>demo / demo123
-                    <button type="button" onclick="document.getElementById('login-username').value='demo';document.getElementById('login-password').value='demo123';this.closest('form').querySelector('.auth-submit').click()" style="margin-left:10px;padding:4px 14px;background:#f59e0b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">一键体验 →</button>
+            <div x-data="{ mode: 'login' }">
+                <div class="auth-tabs">
+                    <button type="button" @click="mode = 'login'" :class="mode === 'login' && 'active'">登录</button>
+                    <button type="button" @click="mode = 'register'" :class="mode === 'register' && 'active'">创建账号</button>
                 </div>
-                {% endif %}
-                <div class="form-group">
-                    <label for="login-username">用户名</label>
-                    <input id="login-username" type="text" name="username" autocomplete="username" placeholder="请输入用户名" required autofocus>
-                </div>
-                <div class="form-group">
-                    <div class="auth-label-row"><label for="login-password">密码</label><a href="#" onclick="return false">需要帮助？</a></div>
-                    <div class="password-field">
-                        <input id="login-password" type="password" name="password" autocomplete="current-password" placeholder="请输入密码" required>
-                        <button type="button" class="password-toggle" data-password-toggle="login-password">显示</button>
-                    </div>
-                </div>
-                <div id="login-error" class="auth-error" role="alert"></div>
-                <button type="submit" class="auth-submit">登录工作台 <span>→</span></button>
-            </form>
 
-            <div class="auth-register">
-                <span>还没有账号？</span>
-                <details>
-                    <summary>创建团队账号</summary>
-                    <form class="auth-form auth-register-form" hx-post="/auth/register" hx-target="#reg-error" hx-swap="innerHTML">
+                {# ---- 登录表单 ---- #}
+                <div x-show="mode === 'login'" x-cloak>
+                    <div class="auth-heading">
+                        <p class="auth-eyebrow">WELCOME BACK</p>
+                        <h2>欢迎回来</h2>
+                        <p>登录你的投标工作台，继续推进项目。</p>
+                    </div>
+                    <form class="auth-form" hx-post="/auth/login" hx-target="#login-error" hx-swap="innerHTML">
+                        {% if demo_mode %}
+                        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:12px;text-align:center;font-size:13px;color:#92400e">
+                            <strong>演示账号：</strong>demo / demo123
+                            <button type="button" onclick="document.getElementById('login-username').value='demo';document.getElementById('login-password').value='demo123';this.closest('form').querySelector('.auth-submit').click()" style="margin-left:10px;padding:4px 14px;background:#f59e0b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">一键体验 →</button>
+                        </div>
+                        {% endif %}
+                        <div class="form-group">
+                            <label for="login-username">用户名</label>
+                            <input id="login-username" type="text" name="username" autocomplete="username" placeholder="请输入用户名" required autofocus>
+                        </div>
+                        <div class="form-group">
+                            <div class="auth-label-row"><label for="login-password">密码</label><a href="#" onclick="return false">需要帮助？</a></div>
+                            <div class="password-field">
+                                <input id="login-password" type="password" name="password" autocomplete="current-password" placeholder="请输入密码" required>
+                                <button type="button" class="password-toggle" data-password-toggle="login-password">显示</button>
+                            </div>
+                        </div>
+                        <div id="login-error" class="auth-error" role="alert"></div>
+                        <button type="submit" class="auth-submit">登录工作台 <span>→</span></button>
+                    </form>
+                </div>
+
+                {# ---- 注册表单 ---- #}
+                <div x-show="mode === 'register'" x-cloak>
+                    <div class="auth-heading">
+                        <p class="auth-eyebrow">GET STARTED</p>
+                        <h2>创建账号</h2>
+                        <p>注册你的团队工作台，开始管理投标项目。</p>
+                    </div>
+                    <form class="auth-form" hx-post="/auth/register" hx-target="#reg-error" hx-swap="innerHTML">
                         <div class="form-group"><label for="reg-username">用户名</label><input id="reg-username" type="text" name="username" autocomplete="username" placeholder="设置用户名" required minlength="2"></div>
                         <div class="form-group"><label for="reg-full-name">姓名</label><input id="reg-full-name" type="text" name="full_name" autocomplete="name" placeholder="你的姓名"></div>
                         <div class="form-group"><label for="reg-password">密码</label><div class="password-field"><input id="reg-password" type="password" name="password" autocomplete="new-password" placeholder="至少 6 位" required minlength="6"><button type="button" class="password-toggle" data-password-toggle="reg-password">显示</button></div></div>
                         <div id="reg-error" class="auth-error" role="alert"></div>
-                        <button type="submit" class="auth-submit auth-submit-secondary">创建账号 <span>→</span></button>
+                        <button type="submit" class="auth-submit">创建账号 <span>→</span></button>
                     </form>
-                </details>
+                    <p class="auth-register-switch">已有账号？<button type="button" @click="mode = 'login'">返回登录</button></p>
+                </div>
             </div>
             <p class="auth-footnote">安全登录 · 数据仅供授权团队使用</p>
         </div>
     </section>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js" defer></script>
 <script>
     document.body.addEventListener('htmx:beforeSwap', function(e) {
         if (e.detail.xhr.status === 200 && e.detail.xhr.responseURL && e.detail.xhr.responseURL.endsWith('/')) {

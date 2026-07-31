@@ -99,13 +99,49 @@ body { background: #f4f7fb; color: #172033; font-family: Manrope, "Noto Sans SC"
 .auth-submit span { font-size: 19px; font-weight: 400; transition: transform .2s; }
 .auth-submit:hover { color: #fff; transform: translateY(-1px); box-shadow: 0 15px 30px rgba(79,70,229,.3); }
 .auth-submit:hover span { transform: translateX(3px); }
-.auth-register { display: flex; justify-content: center; align-items: center; gap: 5px; margin-top: 28px; color: #94a3b8; font-size: 13px; }
-.auth-register details { position: relative; }
-.auth-register summary { color: #4f46e5; cursor: pointer; font-weight: 600; list-style: none; }
-.auth-register summary::-webkit-details-marker { display: none; }
-.auth-register-form { position: absolute; z-index: 10; right: 0; top: 28px; width: 340px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 14px; background: white; box-shadow: 0 20px 50px rgba(15,23,42,.16); }
-.auth-register-form .form-group { margin-bottom: 13px; }
-.auth-register-form input { height: 42px; }
+/* 登录/注册标签切换 */
+.auth-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 32px;
+    padding: 3px;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #eef2f6;
+}
+.auth-tabs button {
+    flex: 1;
+    padding: 9px 0;
+    border: 0;
+    border-radius: 8px;
+    color: #728399;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 550;
+    cursor: pointer;
+    transition: all .2s ease;
+}
+.auth-tabs button.active {
+    color: #1e293b;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(31,50,73,.1);
+}
+[x-cloak] { display: none !important; }
+.auth-register-switch {
+    margin-top: 24px;
+    color: #94a3b8;
+    font-size: 13px;
+    text-align: center;
+}
+.auth-register-switch button {
+    border: 0;
+    background: transparent;
+    color: #4f46e5;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0;
+}
 .auth-submit-secondary { height: 44px; font-size: 13px; }
 .auth-footnote { margin: 34px 0 0; color: #a0aec0; font-size: 11px; text-align: center; }
 .page-title { font-size: 17px; font-weight: 650; color: var(--text); }
@@ -1649,8 +1685,7 @@ details.form-section[open] > summary {
     background: var(--ops-panel-raised);
 }
 
-.action-menu__panel,
-.auth-register-form {
+.action-menu__panel {
     border-color: var(--ops-line);
     color: var(--ops-text);
     background: var(--ops-panel-raised);
@@ -1936,9 +1971,28 @@ details.form-section[open] > summary {
 }
 
 .auth-heading > p:last-child,
-.auth-footnote,
-.auth-register {
+.auth-footnote {
     color: var(--ops-muted);
+}
+
+/* 登录/注册标签切换 - 深色主题 */
+.auth-tabs {
+    border-color: var(--ops-line);
+    background: rgba(255,255,255,.03);
+}
+.auth-tabs button {
+    color: var(--ops-faint);
+}
+.auth-tabs button.active {
+    color: var(--ops-text);
+    background: var(--ops-panel);
+    box-shadow: 0 2px 10px rgba(0,0,0,.18);
+}
+.auth-register-switch {
+    color: var(--ops-muted);
+}
+.auth-register-switch button {
+    color: var(--ops-primary);
 }
 
 .auth-form input {
@@ -2435,8 +2489,7 @@ select option {
     background: #fff;
 }
 
-.action-menu__panel,
-.auth-register-form {
+.action-menu__panel {
     border-color: var(--ops-line);
     color: var(--ops-text);
     background: #fff;
@@ -2837,15 +2890,33 @@ select option {
 
 .auth-heading .auth-eyebrow,
 .auth-label-row a,
-.auth-register summary,
 .password-toggle {
     color: var(--ops-primary);
 }
 
 .auth-heading > p:last-child,
-.auth-footnote,
-.auth-register {
+.auth-footnote {
     color: var(--ops-muted);
+}
+
+/* 登录/注册标签切换 - 浅色主题 */
+.auth-tabs {
+    border-color: #dbe3ef;
+    background: #eef2f6;
+}
+.auth-tabs button {
+    color: #728399;
+}
+.auth-tabs button.active {
+    color: #1e293b;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(31,50,73,.1);
+}
+.auth-register-switch {
+    color: #94a3b8;
+}
+.auth-register-switch button {
+    color: #4f46e5;
 }
 
 .auth-form input {

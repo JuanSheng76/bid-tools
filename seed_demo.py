@@ -434,7 +434,7 @@ ACTIVE_NOTICES = [
         "qualification_requirements": "1.CMA或CNAS资质；2.有风电和光伏检测经验；3.具备并网检测资质。",
         "contact_person": "钱主任",
         "contact_phone": "0571-88887777",
-        "status": "worth",
+        "status": "bidding",
         "bid_decision": "bid",
         "assessment": {
             "total_score": 82,
@@ -466,7 +466,7 @@ ACTIVE_NOTICES = [
         "qualification_requirements": "1.国家级CMA资质；2.近三年有组件批量检测经验；3.通过国网供应商资格审查。",
         "contact_person": "赵处长",
         "contact_phone": "010-66668888",
-        "status": "worth",
+        "status": "bidding",
         "bid_decision": "bid",
         "assessment": {
             "total_score": 78,
@@ -1091,9 +1091,52 @@ async def _seed_historical_results(db):
     print(f"[seed_demo] 已创建 {new_count} 条历史投标结果")
 
 
+# 各标讯倒排任务进度配置：done=N个已完成, in_progress=N个进行中, 其余todo
+_TASK_PROGRESS = {
+    "DEMO-ACTIVE-006": {"done": 3, "in_progress": 1},   # ~70%: 前3 done, 第4 in_progress
+    "DEMO-ACTIVE-007": {"done": 1, "in_progress": 1},   # ~30%: 第1 done, 第2 in_progress
+    "DEMO-ACTIVE-008": {"done": 2, "in_progress": 1},   # ~50%: 前2 done, 第3 in_progress
+    "DEMO-ACTIVE-009": {"done": 1, "in_progress": 0},   # ~15%: 第1 done, 其余 todo
+}
+
+# 自定义任务（为看板增加丰富度，放在首个 bidding 标讯下）
+_EXTRA_CUSTOM_TASKS = [
+    {"title": "提前联系招标代理了解项目背景", "status": "done", "priority": "medium",
+     "planned_end_days": 2, "checklist": [{"text": "电话沟通", "done": True}, {"text": "记录要点", "done": True}]},
+    {"title": "准备投标意向函", "status": "todo", "priority": "low",
+     "planned_end_days": 5, "checklist": [{"text": "起草意向函", "done": False}, {"text": "盖章发出", "done": False}]},
+    {"title": "内部投标准备会议", "status": "done", "priority": "high",
+     "planned_end_days": 6, "checklist": [{"text": "确定投标策略", "done": True}, {"text": "明确分工", "done": True}, {"text": "会议纪要存档", "done": True}]},
+]
+
+
+def _apply_checklist_progress(template_checklist, status):
+    """根据任务状态更新 checklist 的 done 状态"""
+    result = []
+    for item in template_checklist:
+        item_copy = dict(item)
+        if status == "done":
+            item_copy["done"] = True
+        elif status == "todo":
+            item_copy["done"] = False
+        # in_progress: 保留模板默认（第一个 done，其余 false 模拟进行中）
+        # 模板默认全是 False，这里让第一个变 True 表示有进展
+        elif status == "in_progress":
+            if not result:  # 第一个 item
+                item_copy["done"] = True
+            else:
+                item_copy["done"] = False
+        result.append(item_copy)
+    return result
+
+
 async def _seed_tasks(db, notice_map: dict):
-    """为 bidding 状态的标讯创建倒排计划任务"""
+    """为 bidding 状态的标讯创建倒排计划任务（带差异化 checklist 进度）"""
     bidding_eids = [n["external_id"] for n in ACTIVE_NOTICES if n["status"] == "bidding"]
+    days_before_list = [15, 12, 10, 7, 5, 3, 1]
+
+    demo_user = (await db.execute(select(User).where(User.username == "demo"))).scalar_one_or_none()
+    assignee_id = demo_user.id if demo_user else None
 
     for ext_id in bidding_eids:
         if ext_id not in notice_map:
@@ -1101,32 +1144,29 @@ async def _seed_tasks(db, notice_map: dict):
         notice_id = notice_map[ext_id]
 
         existing = (await db.execute(
-            select(Task).where(Task.notice_id == notice_id)
+            select(Task).where(Task.notice_id == notice_id, Task.task_type != "custom")
         )).scalars().all()
         if existing:
             continue
 
         notice_data = next(n for n in ACTIVE_NOTICES if n["external_id"] == ext_id)
         deadline = notice_data["bid_deadline"]
+        progress = _TASK_PROGRESS.get(ext_id, {"done": 1, "in_progress": 0})
+        done_count = progress["done"]
+        in_progress_count = progress["in_progress"]
 
-        # 获取演示用户 id
-        demo_user = (await db.execute(select(User).where(User.username == "demo"))).scalar_one_or_none()
-        assignee_id = demo_user.id if demo_user else None
-
-        days_before_list = [15, 12, 10, 7, 5, 3, 1]
         for i, template in enumerate(TASK_TEMPLATE):
             days_before = days_before_list[i]
             planned_end = deadline - timedelta(days=days_before)
-            # 跳过周末
             while planned_end.weekday() >= 5:
                 planned_end -= timedelta(days=1)
             planned_start = planned_end - timedelta(days=2)
 
-            # 第一个和第二个任务已完成
-            if i < 1:
+            # 根据进度配置决定状态
+            if i < done_count:
                 status = "done"
                 completed_at = planned_end
-            elif i < 2:
+            elif i < done_count + in_progress_count:
                 status = "in_progress"
                 completed_at = None
             else:
@@ -1145,29 +1185,20 @@ async def _seed_tasks(db, notice_map: dict):
                 planned_end=planned_end,
                 completed_at=completed_at,
                 sort_order=i,
-                checklist=template["checklist"],
+                checklist=_apply_checklist_progress(template["checklist"], status),
             )
             db.add(task)
 
-    # 再创建几条独立自定义任务，增加看板丰富度
-    demo_user = (await db.execute(select(User).where(User.username == "demo"))).scalar_one_or_none()
+    # 为第一个 bidding 标讯创建自定义任务（丰富看板）
     if demo_user:
         existing_extra = (await db.execute(
             select(Task).where(Task.task_type == "custom", Task.assignee_id == demo_user.id)
         )).scalars().all()
         if not existing_extra:
-            # 为第一条 worth 标讯创建2条自定义任务
-            worth_eids = [n["external_id"] for n in ACTIVE_NOTICES if n["status"] == "worth"]
-            if worth_eids and worth_eids[0] in notice_map:
-                extra_tasks = [
-                    {"title": "提前联系招标代理了解项目背景", "status": "done", "priority": "medium",
-                     "planned_end": _dt(2), "checklist": [{"text": "电话沟通", "done": True}, {"text": "记录要点", "done": True}]},
-                    {"title": "准备投标意向函", "status": "todo", "priority": "low",
-                     "planned_end": _dt(5), "checklist": [{"text": "起草意向函", "done": False}, {"text": "盖章发出", "done": False}]},
-                ]
-                for et in extra_tasks:
+            if bidding_eids and bidding_eids[0] in notice_map:
+                for et in _EXTRA_CUSTOM_TASKS:
                     task = Task(
-                        notice_id=notice_map[worth_eids[0]],
+                        notice_id=notice_map[bidding_eids[0]],
                         title=et["title"],
                         description="",
                         task_type="custom",
@@ -1175,7 +1206,7 @@ async def _seed_tasks(db, notice_map: dict):
                         status=et["status"],
                         priority=et["priority"],
                         planned_start=_now(),
-                        planned_end=et["planned_end"],
+                        planned_end=_dt(et["planned_end_days"]),
                         sort_order=99,
                         checklist=et["checklist"],
                     )
@@ -1236,7 +1267,8 @@ async def _seed_registrations(db, notice_map: dict):
 # 预设招标文件解析结果（展示"查看解析与推荐"功能）
 # ============================================================
 
-DEMO_TENDER_ANALYSIS = {
+DEMO_TENDER_ANALYSES = {
+    "DEMO-ACTIVE-006": {
     "file_name": "华东风电光伏互补电站并网性能检测-招标文件(演示).docx",
     "file_stored_at": None,
     "parsed_at": _dt(-10).isoformat(),
@@ -1359,34 +1391,335 @@ DEMO_TENDER_ANALYSIS = {
         {"text": "如需现场踏勘，须在购买招标文件后3个工作日内联系招标人预约", "task_type": "get_docs", "priority": "medium"},
         {"text": "开标一览表须单独用小信封密封，与投标文件一同递交", "task_type": "format", "priority": "high"},
     ],
+    },
+    "DEMO-ACTIVE-007": {
+        "file_name": "国网光伏组件批量质量抽检-招标文件(演示).docx",
+        "file_stored_at": None,
+        "parsed_at": None,
+        "parse_version": 1,
+        "qualification_requirements": {
+            "sealing": {
+                "copies": "正本 1 份，副本 5 份，电子版 U 盘 2 份",
+                "packaging": "正本与副本分别密封，外封加盖公章并注明'正本/副本'，U盘单独密封"
+            },
+            "stamping": {
+                "requirements": [
+                    "所有投标文件每页均需加盖单位公章",
+                    "法定代表人或授权代表签字处必须亲笔签名",
+                    "报价明细表须单独加盖公章和法人章"
+                ],
+                "requirements_text": "投标文件须由法定代表人或授权代表逐页签字并加盖公章。"
+            },
+            "submission": {
+                "method": "现场递交",
+                "deadline": "2026年XX月XX日 上午9:30（北京时间）",
+                "location": "北京市西城区XXX路 北京市公共资源交易中心 5楼第二开标室",
+                "requirements_text": "投标人须派授权代表携带身份证原件及授权委托书原件到开标现场递交。"
+            },
+            "financial_requirements": {
+                "bid_bond": 10.4,
+                "bid_bond_form": "电汇或银行保函",
+                "performance_bond": 26.0,
+                "other": "中标后5个工作日内缴纳履约保证金"
+            },
+            "required_certificates": [
+                {"name": "国家级CMA检验检测资质", "type": "qualification", "matched": True},
+                {"name": "CNAS实验室认可证书", "type": "qualification", "matched": True},
+                {"name": "国网供应商资格审查合格证明", "type": "qualification", "matched": False},
+                {"name": "光伏组件IEC标准检测能力证明", "type": "qualification", "matched": True},
+                {"name": "项目负责人高级工程师职称", "type": "personnel", "matched": True},
+                {"name": "不少于5人的专职检测团队", "type": "personnel", "matched": True},
+            ],
+            "required_commitments": [
+                {"text": "无行贿犯罪记录承诺函", "matched": False},
+                {"text": "不转包分包承诺函", "matched": False},
+                {"text": "保密协议承诺函", "matched": False},
+                {"text": "廉洁投标承诺书", "matched": False},
+            ]
+        },
+        "scoring_criteria": {
+            "total_points": 100,
+            "self_assessed_total": 62,
+            "raw_text": "一、报价得分（30分）：低价优先法...\n二、检测能力（30分）：实验室资质、设备配置、检测标准覆盖度...\n三、企业业绩（25分）：近三年组件批量检测合同...\n四、项目团队（15分）：项目负责人及团队配置...",
+            "items": [
+                {"name": "报价得分", "depth": 1, "max_points": 30, "score_type": "objective",
+                 "scoring_method": "以最低有效报价为基准价，报价每高于基准价1%扣1分", "self_assessed_score": 0, "category": "price"},
+                {"name": "检测能力", "depth": 1, "max_points": 30, "score_type": "subjective",
+                 "scoring_method": "实验室资质等级、检测设备先进性、IEC标准覆盖度综合评审",
+                 "self_assessed_score": 24, "category": "technical",
+                 "children": [
+                     {"name": "实验室资质", "depth": 2, "max_points": 12, "score_type": "objective",
+                      "scoring_method": "国家级CMA得12分，省级得6分", "self_assessed_score": 12, "category": "technical"},
+                     {"name": "设备配置", "depth": 2, "max_points": 10, "score_type": "subjective",
+                      "scoring_method": "核心检测设备自有率、先进性", "self_assessed_score": 7, "category": "technical"},
+                     {"name": "标准覆盖度", "depth": 2, "max_points": 8, "score_type": "objective",
+                      "scoring_method": "IEC 61215/IEC 61730等标准检测能力", "self_assessed_score": 5, "category": "technical"},
+                 ]},
+                {"name": "企业业绩", "depth": 1, "max_points": 25, "score_type": "objective",
+                 "scoring_method": "近三年每完成1个组件批量检测项目得2.5分，满分25分", "self_assessed_score": 20, "category": "performance"},
+                {"name": "项目团队", "depth": 1, "max_points": 15, "score_type": "objective",
+                 "scoring_method": "项目负责人资质+团队规模与经验综合评分", "self_assessed_score": 12, "category": "personnel"},
+            ],
+        },
+        "recommendations": {
+            "qualifications": [
+                {"name": "国家级CMA检验检测资质", "level": "国家级", "match_score": 0.98,
+                 "reason": "国网项目明确要求国家级CMA，公司具备"},
+                {"name": "CNAS实验室认可证书", "level": "国家级", "match_score": 0.95,
+                 "reason": "IEC标准检测能力认可，与组件检测直接匹配"},
+            ],
+            "performances": [
+                {"project_name": "大型地面电站年度巡检项目", "contract_amount": 225.0, "match_score": 0.92,
+                 "reason": "批量检测经验丰富，模式与本项目相似"},
+                {"project_name": "华东区域光伏电站性能检测服务", "contract_amount": 186.0, "match_score": 0.85,
+                 "reason": "光伏检测领域直接相关"},
+            ],
+            "personnel": [
+                {"name": "王工", "position": "技术负责人", "match_score": 0.95,
+                 "reason": "注册电气工程师+光伏高级检测师，符合项目负责人要求"},
+                {"name": "刘工", "position": "检测工程师", "match_score": 0.90,
+                 "reason": "光伏组件检测师+红外热像检测师，匹配组件抽检需求"},
+            ],
+        },
+        "important_notes": [
+            {"text": "须提供国网供应商资格审查合格证明，如尚未通过须在投标前完成申请", "task_type": "qualifications", "priority": "urgent"},
+            {"text": "投标文件须包含组件检测标准IEC 61215/IEC 61730的CNAS认可范围证明", "task_type": "certs", "priority": "high"},
+            {"text": "需提供不少于10个组件的抽样方案和检测计划", "task_type": "writing", "priority": "high"},
+            {"text": "投标保证金须在投标截止前72小时到账", "task_type": "pricing", "priority": "urgent"},
+            {"text": "项目团队至少5人，须提供人员近6个月社保缴纳证明", "task_type": "certs", "priority": "high"},
+            {"text": "报价须按单价（元/组件）和总价分别列示", "task_type": "pricing", "priority": "medium"},
+        ],
+    },
+    "DEMO-ACTIVE-008": {
+        "file_name": "南方电网分布式光伏验收检测-招标文件(演示).docx",
+        "file_stored_at": None,
+        "parsed_at": None,
+        "parse_version": 1,
+        "qualification_requirements": {
+            "sealing": {
+                "copies": "正本 1 份，副本 3 份，电子版光盘 1 份",
+                "packaging": "正副本分装，外封加盖公章，注明项目名称及投标人名称"
+            },
+            "stamping": {
+                "requirements": [
+                    "所有投标文件须逐页加盖公章",
+                    "法定代表人或授权代表须在指定位置签字",
+                    "报价文件单独密封并加盖骑缝章"
+                ],
+                "requirements_text": "投标文件逐页加盖投标人公章，法定代表人或授权代表签字。"
+            },
+            "submission": {
+                "method": "现场递交或邮寄（邮寄以收到时间为准）",
+                "deadline": "2026年XX月XX日 上午9:30（北京时间）",
+                "location": "广东省广州市天河区XXX路 广州公共资源交易中心",
+                "requirements_text": "接受邮寄递交，但投标人须承担邮寄延误风险。建议现场递交。"
+            },
+            "financial_requirements": {
+                "bid_bond": 8.2,
+                "bid_bond_form": "银行保函优先（电汇也可接受）",
+                "performance_bond": 20.5,
+                "other": "中标后5个工作日内缴纳履约保证金"
+            },
+            "required_certificates": [
+                {"name": "CMA或CNAS资质证书", "type": "qualification", "matched": True},
+                {"name": "ISO 9001质量管理体系认证", "type": "qualification", "matched": True},
+                {"name": "南方电网供应商备案证明", "type": "qualification", "matched": False},
+                {"name": "电站检测全项能力证明", "type": "qualification", "matched": True},
+                {"name": "安全员资格证书", "type": "personnel", "matched": True},
+            ],
+            "required_commitments": [
+                {"text": "无行贿犯罪记录承诺函", "matched": False},
+                {"text": "现场安全作业承诺书", "matched": False},
+                {"text": "数据保密承诺函", "matched": False},
+            ]
+        },
+        "scoring_criteria": {
+            "total_points": 100,
+            "self_assessed_total": 68,
+            "raw_text": "一、报价得分（25分）...\n二、技术方案（35分）：含检测方案、安全措施、进度计划...\n三、企业业绩（25分）：南方电网项目业绩优先...\n四、项目团队（15分）...",
+            "items": [
+                {"name": "报价得分", "depth": 1, "max_points": 25, "score_type": "objective",
+                 "scoring_method": "基准价法，报价每偏离基准价1%扣0.5分", "self_assessed_score": 0, "category": "price"},
+                {"name": "技术方案", "depth": 1, "max_points": 35, "score_type": "subjective",
+                 "scoring_method": "检测方案完整性、安全措施、进度计划综合评审",
+                 "self_assessed_score": 28, "category": "technical",
+                 "children": [
+                     {"name": "检测方案", "depth": 2, "max_points": 18, "score_type": "subjective",
+                      "scoring_method": "检测项目覆盖度、方法合理性", "self_assessed_score": 14, "category": "technical"},
+                     {"name": "安全与进度", "depth": 2, "max_points": 17, "score_type": "subjective",
+                      "scoring_method": "现场安全措施、进度计划可行性", "self_assessed_score": 14, "category": "technical"},
+                 ]},
+                {"name": "企业业绩", "depth": 1, "max_points": 25, "score_type": "objective",
+                 "scoring_method": "每提供1个南方电网项目业绩得5分，其他电站检测业绩得3分",
+                 "self_assessed_score": 18, "category": "performance"},
+                {"name": "项目团队", "depth": 1, "max_points": 15, "score_type": "objective",
+                 "scoring_method": "项目负责人资质得8分，团队人员配置得7分", "self_assessed_score": 12, "category": "personnel"},
+            ],
+        },
+        "recommendations": {
+            "qualifications": [
+                {"name": "CMA检验检测机构资质认定证书", "level": "国家级", "match_score": 0.95,
+                 "reason": "CMA/CNAS为基本门槛，公司双证齐全"},
+                {"name": "ISO 9001质量管理体系认证", "level": "国际", "match_score": 0.82,
+                 "reason": "体现质量管理水平，为技术评分加分项"},
+            ],
+            "performances": [
+                {"project_name": "华东区域光伏电站性能检测服务", "contract_amount": 186.0, "match_score": 0.88,
+                 "reason": "光伏电站检测经验，规模与验收检测项目接近"},
+                {"project_name": "某能源集团电站运维质量检测", "contract_amount": 320.0, "match_score": 0.82,
+                 "reason": "多站点检测经验，与15个站点验收模式匹配"},
+            ],
+            "personnel": [
+                {"name": "王工", "position": "技术负责人", "match_score": 0.95,
+                 "reason": "注册电气工程师，具备项目负责人全部资质要求"},
+                {"name": "赵经理", "position": "商务经理", "match_score": 0.78,
+                 "reason": "有南方电网项目商务对接经验"},
+            ],
+        },
+        "important_notes": [
+            {"text": "南方电网项目需提前完成供应商备案，如未备案须在投标前办理", "task_type": "qualifications", "priority": "urgent"},
+            {"text": "15个检测站点分散在广东省内，须制定合理的现场检测路线和时间安排", "task_type": "writing", "priority": "high"},
+            {"text": "技术方案须包含详细的现场安全措施（高空作业、电气安全）", "task_type": "writing", "priority": "high"},
+            {"text": "接受邮寄递交但以收到时间为准，建议提前2天寄出或现场递交", "task_type": "stamp", "priority": "medium"},
+            {"text": "需提供至少2个分布式光伏项目的检测合同作为业绩证明", "task_type": "certs", "priority": "medium"},
+        ],
+    },
+    "DEMO-ACTIVE-009": {
+        "file_name": "央企新能源基地技术监督服务-招标文件(演示).docx",
+        "file_stored_at": None,
+        "parsed_at": None,
+        "parse_version": 1,
+        "qualification_requirements": {
+            "sealing": {
+                "copies": "正本 1 份，副本 6 份，电子版 U 盘 2 份",
+                "packaging": "正副本分别密封，外封加盖公章，U盘单独密封标注"
+            },
+            "stamping": {
+                "requirements": [
+                    "所有文件每页须加盖公章",
+                    "法定代表人或授权代表须逐页签字",
+                    "报价文件单独密封并加盖骑缝章",
+                    "服务方案须有技术负责人签字确认"
+                ],
+                "requirements_text": "投标文件逐页加盖公章，法定代表人或授权代表逐页签字。"
+            },
+            "submission": {
+                "method": "现场递交（不接受邮寄）",
+                "deadline": "2026年XX月XX日 上午9:30（北京时间）",
+                "location": "河北省石家庄市XXX路 河北省公共资源交易中心 2楼第一开标室",
+                "requirements_text": "必须现场递交，不接受邮寄。授权代表须携带身份证原件及授权委托书。"
+            },
+            "financial_requirements": {
+                "bid_bond": 13.6,
+                "bid_bond_form": "银行保函（必须）",
+                "performance_bond": 34.0,
+                "other": "注册资金不低于500万，需提供近三年审计报告"
+            },
+            "required_certificates": [
+                {"name": "国家级CMA/CNAS资质", "type": "qualification", "matched": True},
+                {"name": "央企/国企新能源项目服务业绩证明", "type": "qualification", "matched": True},
+                {"name": "注册资金不低于500万证明", "type": "qualification", "matched": True},
+                {"name": "ISO 9001/ISO 14001/ISO 45001三体系认证", "type": "qualification", "matched": False},
+                {"name": "项目负责人高级职称+注册证书", "type": "personnel", "matched": True},
+                {"name": "不少于10人的技术服务团队", "type": "personnel", "matched": False},
+            ],
+            "required_commitments": [
+                {"text": "无行贿犯罪记录承诺函", "matched": False},
+                {"text": "两年服务期内人员稳定性承诺", "matched": False},
+                {"text": "知识产权及数据安全承诺", "matched": False},
+                {"text": "不转包分包承诺函", "matched": False},
+                {"text": "廉洁协议承诺书", "matched": False},
+            ]
+        },
+        "scoring_criteria": {
+            "total_points": 100,
+            "self_assessed_total": 72,
+            "raw_text": "一、报价得分（20分）...\n二、技术方案（40分）：含服务方案、技术创新、应急预案...\n三、企业实力（25分）：资质、业绩、财务状况...\n四、项目团队（15分）：团队配置、负责人资历...",
+            "items": [
+                {"name": "报价得分", "depth": 1, "max_points": 20, "score_type": "objective",
+                 "scoring_method": "平均价法，报价每偏离基准价1%扣0.5分", "self_assessed_score": 0, "category": "price"},
+                {"name": "技术方案", "depth": 1, "max_points": 40, "score_type": "subjective",
+                 "scoring_method": "服务方案完整性、技术创新性、应急响应能力综合评审",
+                 "self_assessed_score": 32, "category": "technical",
+                 "children": [
+                     {"name": "服务方案", "depth": 2, "max_points": 20, "score_type": "subjective",
+                      "scoring_method": "光-风-储综合技术监督方案完整性", "self_assessed_score": 16, "category": "technical"},
+                     {"name": "技术创新", "depth": 2, "max_points": 12, "score_type": "subjective",
+                      "scoring_method": "在线监测、大数据分析等创新手段应用", "self_assessed_score": 9, "category": "technical"},
+                     {"name": "应急响应", "depth": 2, "max_points": 8, "score_type": "subjective",
+                      "scoring_method": "突发故障应急响应时间和服务承诺", "self_assessed_score": 7, "category": "technical"},
+                 ]},
+                {"name": "企业实力", "depth": 1, "max_points": 25, "score_type": "objective",
+                 "scoring_method": "资质等级+近三年合同总额+审计报告综合评分", "self_assessed_score": 20, "category": "performance"},
+                {"name": "项目团队", "depth": 1, "max_points": 15, "score_type": "objective",
+                 "scoring_method": "团队规模、人员资质、项目负责人经验", "self_assessed_score": 10, "category": "personnel"},
+            ],
+        },
+        "recommendations": {
+            "qualifications": [
+                {"name": "国家级CMA/CNAS双证", "level": "国家级", "match_score": 0.98,
+                 "reason": "央企项目明确要求国家级资质，公司具备"},
+                {"name": "ISO三体系认证", "level": "国际", "match_score": 0.70,
+                 "reason": "公司仅具备ISO 9001，缺少14001/45001，需评估是否补充认证"},
+            ],
+            "performances": [
+                {"project_name": "某能源集团电站运维质量检测", "contract_amount": 320.0, "match_score": 0.92,
+                 "reason": "风电+光伏综合服务经验，规模与本项目匹配"},
+                {"project_name": "大型地面电站年度巡检项目", "contract_amount": 225.0, "match_score": 0.75,
+                 "reason": "长期巡检服务模式与技术监督服务相似"},
+            ],
+            "personnel": [
+                {"name": "王工", "position": "技术负责人", "match_score": 0.95,
+                 "reason": "注册电气工程师+高级职称，满足项目负责人全部要求"},
+                {"name": "陈工", "position": "检测工程师", "match_score": 0.78,
+                 "reason": "逆变器+电能质量双证，匹配光储技术监督需求"},
+            ],
+        },
+        "important_notes": [
+            {"text": "本项目要求现场递交，不接受邮寄。务必安排专人提前一天到达石家庄", "task_type": "stamp", "priority": "urgent"},
+            {"text": "须提供近三年经审计的财务报告，资产负债率不得高于70%", "task_type": "qualifications", "priority": "high"},
+            {"text": "服务方案须包含光-风-储综合技术监督的完整内容，缺一不可", "task_type": "writing", "priority": "urgent"},
+            {"text": "投标保证金只接受银行保函，须提前5个工作日办理", "task_type": "pricing", "priority": "urgent"},
+            {"text": "项目团队不少于10人，须提供全员近6个月社保和劳动合同", "task_type": "certs", "priority": "high"},
+            {"text": "服务期为两年，须在方案中体现人员稳定性和知识转移计划", "task_type": "writing", "priority": "medium"},
+            {"text": "报价须按年度分别列示，含人员单价、设备费、差旅费等明细", "task_type": "pricing", "priority": "high"},
+        ],
+    },
 }
 
-# 预设解析目标标讯
-_TENDER_ANALYSIS_TARGET = "DEMO-ACTIVE-006"
+# 预设解析目标标讯（所有 bidding 标讯都预置解析结果）
+_TENDER_ANALYSIS_TARGETS = ["DEMO-ACTIVE-006", "DEMO-ACTIVE-007", "DEMO-ACTIVE-008", "DEMO-ACTIVE-009"]
 
 
 async def _seed_tender_analysis(db, notice_map: dict):
-    """为指定标讯预置招标文件解析结果（演示用）"""
-    ext_id = _TENDER_ANALYSIS_TARGET
-    if ext_id not in notice_map:
-        print(f"[seed_demo] 标讯 {ext_id} 不存在，跳过招标文件解析预设")
-        return
-    notice_id = notice_map[ext_id]
-
-    # 检查是否已有解析数据
+    """为 bidding 标讯预置招标文件解析结果（演示用）"""
     from sqlalchemy import select as _select
-    notice = (await db.execute(_select(BidNotice).where(BidNotice.id == notice_id))).scalar_one_or_none()
-    if notice and notice.tender_analysis:
-        print("[seed_demo] 招标文件解析数据已存在，跳过")
-        return
-
     import copy
-    analysis = copy.deepcopy(DEMO_TENDER_ANALYSIS)
-    analysis["parsed_at"] = _dt(-10).isoformat()
 
-    notice.tender_analysis = analysis
-    await db.flush()
-    print(f"[seed_demo] 已为 {ext_id} 预置招标文件解析结果")
+    for ext_id in _TENDER_ANALYSIS_TARGETS:
+        if ext_id not in notice_map:
+            continue
+        notice_id = notice_map[ext_id]
+
+        notice = (await db.execute(_select(BidNotice).where(BidNotice.id == notice_id))).scalar_one_or_none()
+        if notice and notice.tender_analysis:
+            continue  # 已有，跳过
+
+        analysis_data = DEMO_TENDER_ANALYSES.get(ext_id)
+        if analysis_data is None:
+            continue
+
+        analysis = copy.deepcopy(analysis_data)
+        # 根据标讯截止日期调整解析时间
+        notice_data = next((n for n in ACTIVE_NOTICES if n["external_id"] == ext_id), None)
+        if notice_data:
+            analysis["parsed_at"] = (notice_data["publishing_date"] + timedelta(days=2)).isoformat()
+        else:
+            analysis["parsed_at"] = _dt(-10).isoformat()
+
+        notice.tender_analysis = analysis
+        await db.flush()
+        print(f"[seed_demo] 已为 {ext_id} 预置招标文件解析结果")
 
 
 def _print_summary():
