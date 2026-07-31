@@ -66,7 +66,7 @@
                             </div>
                         </div>
                         <div id="login-error" class="auth-error" role="alert"></div>
-                        <button type="submit" class="auth-submit">登录工作台 <span>→</span></button>
+                        <button type="submit" class="auth-submit"><span class="auth-submit-label">登录工作台 <span>→</span></span><span class="auth-submit-loading"><i class="auth-spinner"></i> 正在登录...</span></button>
                     </form>
                     <p class="auth-register-switch">没有账号？<button type="button" @click="mode = 'register'">创建账号</button></p>
                 </div>
@@ -83,7 +83,7 @@
                         <div class="form-group"><label for="reg-full-name">姓名</label><input id="reg-full-name" type="text" name="full_name" autocomplete="name" placeholder="你的姓名"></div>
                         <div class="form-group"><label for="reg-password">密码</label><div class="password-field"><input id="reg-password" type="password" name="password" autocomplete="new-password" placeholder="至少 6 位" required minlength="6"><button type="button" class="password-toggle" data-password-toggle="reg-password">显示</button></div></div>
                         <div id="reg-error" class="auth-error" role="alert"></div>
-                        <button type="submit" class="auth-submit">创建账号 <span>→</span></button>
+                        <button type="submit" class="auth-submit"><span class="auth-submit-label">创建账号 <span>→</span></span><span class="auth-submit-loading"><i class="auth-spinner"></i> 正在创建...</span></button>
                     </form>
                     <p class="auth-register-switch">已有账号？<button type="button" @click="mode = 'login'">返回登录</button></p>
                 </div>
