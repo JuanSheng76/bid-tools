@@ -40,11 +40,6 @@
                 <div class="auth-brand-wordmark"><b>标策台</b><small>BID OPERATIONS</small></div>
             </div>
             <div x-data="{ mode: 'login' }">
-                <div class="auth-tabs">
-                    <button type="button" @click="mode = 'login'" :class="mode === 'login' && 'active'">登录</button>
-                    <button type="button" @click="mode = 'register'" :class="mode === 'register' && 'active'">创建账号</button>
-                </div>
-
                 {# ---- 登录表单 ---- #}
                 <div x-show="mode === 'login'" x-cloak>
                     <div class="auth-heading">
@@ -73,6 +68,7 @@
                         <div id="login-error" class="auth-error" role="alert"></div>
                         <button type="submit" class="auth-submit">登录工作台 <span>→</span></button>
                     </form>
+                    <p class="auth-register-switch">没有账号？<button type="button" @click="mode = 'register'">创建账号</button></p>
                 </div>
 
                 {# ---- 注册表单 ---- #}
