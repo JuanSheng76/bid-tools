@@ -808,6 +808,7 @@ async def seed_demo():
         await _seed_historical_results(db)
         await _seed_tasks(db, notice_map)
         await _seed_registrations(db, notice_map)
+        await _seed_tender_analysis(db, notice_map)
         await db.commit()
 
     print("[seed_demo] 演示数据填充完成")
@@ -1231,6 +1232,163 @@ async def _seed_registrations(db, notice_map: dict):
     print(f"[seed_demo] 已创建报名记录")
 
 
+# ============================================================
+# 预设招标文件解析结果（展示"查看解析与推荐"功能）
+# ============================================================
+
+DEMO_TENDER_ANALYSIS = {
+    "file_name": "华东风电光伏互补电站并网性能检测-招标文件(演示).docx",
+    "file_stored_at": None,
+    "parsed_at": _dt(-10).isoformat(),
+    "parse_version": 1,
+    "qualification_requirements": {
+        "sealing": {
+            "copies": "正本 1 份，副本 4 份，电子版 U 盘 1 份",
+            "packaging": "正本与副本分别密封，外封加盖单位公章并注明'正本/副本'字样"
+        },
+        "stamping": {
+            "requirements": [
+                "所有投标文件每页均需加盖单位公章",
+                "法定代表人或授权代表签字处必须亲笔签名",
+                "报价一览表须单独加盖公章和法人章",
+                "投标函须加盖单位公章和法定代表人签字或盖章"
+            ],
+            "requirements_text": "投标文件正本和副本均须由投标人法定代表人或经正式授权的代表逐页签字，并加盖投标人公章。"
+        },
+        "submission": {
+            "method": "现场递交（不接受邮寄）",
+            "deadline": "2026年XX月XX日 上午9:30（北京时间）",
+            "location": "浙江省杭州市西湖区XXX路88号 浙江省公共资源交易中心 3楼开标室",
+            "requirements_text": "投标人须派授权代表携带身份证原件及授权委托书原件到开标现场递交投标文件。"
+        },
+        "financial_requirements": {
+            "bid_bond": 7.1,
+            "bid_bond_form": "银行保函或电汇（不接受现金）",
+            "performance_bond": 17.8,
+            "other": "中标后3个工作日内缴纳履约保证金，合同期满后退还"
+        },
+        "required_certificates": [
+            {"name": "CMA检验检测机构资质认定证书", "type": "qualification", "matched": True},
+            {"name": "CNAS实验室认可证书", "type": "qualification", "matched": True},
+            {"name": "ISO 9001质量管理体系认证", "type": "qualification", "matched": True},
+            {"name": "安全生产许可证", "type": "qualification", "matched": True},
+            {"name": "承装(修、试)电力设施许可证（三级及以上）", "type": "qualification", "matched": False},
+            {"name": "注册电气工程师（项目负责人）", "type": "personnel", "matched": True},
+            {"name": "无损检测人员资格证书", "type": "personnel", "matched": False},
+        ],
+        "required_commitments": [
+            {"text": "无行贿犯罪记录承诺函（近三年）", "matched": False},
+            {"text": "不转包、不分包承诺函", "matched": False},
+            {"text": "知识产权归属声明", "matched": False},
+            {"text": "保密承诺函", "matched": False},
+        ]
+    },
+    "scoring_criteria": {
+        "total_points": 100,
+        "items": [
+            {
+                "name": "报价得分", "depth": 1, "max_points": 30, "score_type": "objective",
+                "scoring_method": "以所有有效投标报价的算术平均值为基准价，报价每高于基准价1%扣1分，每低于基准价1%扣0.5分",
+                "self_assessed_score": 0, "category": "price"
+            },
+            {
+                "name": "技术方案", "depth": 1, "max_points": 35, "score_type": "subjective",
+                "scoring_method": "根据投标人提供的技术方案的完整性、科学性、可操作性进行评审",
+                "self_assessed_score": 0, "category": "technical",
+                "children": [
+                    {"name": "检测方案完整性", "depth": 2, "max_points": 15, "score_type": "subjective",
+                     "scoring_method": "检测项目覆盖度、方法选择合理性、标准引用是否准确", "self_assessed_score": 12, "category": "technical"},
+                    {"name": "风-光互补电站特殊性应对", "depth": 2, "max_points": 10, "score_type": "subjective",
+                     "scoring_method": "是否针对风电+光伏互补场景提出针对性检测方案", "self_assessed_score": 8, "category": "technical"},
+                    {"name": "数据分析和报告方案", "depth": 2, "max_points": 10, "score_type": "subjective",
+                     "scoring_method": "数据处理能力、报告格式规范性、结论可靠性", "self_assessed_score": 8, "category": "technical"},
+                ]
+            },
+            {
+                "name": "企业业绩", "depth": 1, "max_points": 20, "score_type": "objective",
+                "scoring_method": "近三年每完成1个同类光伏/风电检测项目得2分，满分20分",
+                "self_assessed_score": 16, "category": "performance"
+            },
+            {
+                "name": "项目团队", "depth": 1, "max_points": 10, "score_type": "objective",
+                "scoring_method": "项目负责人具备高级职称得3分，团队成员具备相关检测资质每证得1分",
+                "self_assessed_score": 8, "category": "personnel"
+            },
+            {
+                "name": "设备配置", "depth": 1, "max_points": 5, "score_type": "objective",
+                "scoring_method": "检测设备先进性、完备性，自有三相电能质量分析仪、红外热像仪等核心设备",
+                "self_assessed_score": 4, "category": "technical"
+            },
+        ],
+        "self_assessed_total": 56,
+        "raw_text": "一、报价得分（30分）：以所有有效投标报价的算术平均值为基准价...\n二、技术方案（35分）：包括检测方案完整性、风-光互补特殊性应对、数据分析方案...\n三、企业业绩（20分）：近三年同类项目业绩...\n四、项目团队（10分）：项目负责人和团队成员资质...\n五、设备配置（5分）：检测设备配置情况..."
+    },
+    "recommendations": {
+        "qualifications": [
+            {"name": "CMA检验检测机构资质认定证书", "level": "国家级", "match_score": 0.98,
+             "reason": "招标文件明确要求CMA资质，公司具备国家级CMA证书"},
+            {"name": "CNAS实验室认可证书", "level": "国家级", "match_score": 0.95,
+             "reason": "与检测能力直接相关，CNAS认可是加分项"},
+            {"name": "ISO 9001质量管理体系认证", "level": "国际", "match_score": 0.85,
+             "reason": "体现质量管理水平，多数招标项目认可"},
+        ],
+        "performances": [
+            {"project_name": "华东区域光伏电站性能检测服务", "contract_amount": 186.0, "match_score": 0.92,
+             "reason": "同为华东区域光伏检测项目，高度匹配"},
+            {"project_name": "大型地面电站年度巡检项目", "contract_amount": 225.0, "match_score": 0.88,
+             "reason": "检测类型和规模相似，可作为参考业绩"},
+            {"project_name": "某能源集团电站运维质量检测", "contract_amount": 320.0, "match_score": 0.85,
+             "reason": "风电+光伏综合检测经验，与本项目互补特性匹配"},
+        ],
+        "personnel": [
+            {"name": "王工", "position": "技术负责人", "match_score": 0.95,
+             "reason": "注册电气工程师+光伏高级检测师，完美匹配项目负责人要求"},
+            {"name": "刘工", "position": "检测工程师", "match_score": 0.88,
+             "reason": "光伏组件检测师+红外热像检测师，匹配现场检测需求"},
+            {"name": "陈工", "position": "检测工程师", "match_score": 0.82,
+             "reason": "逆变器检测师+电能质量评估师，匹配并网检测需求"},
+        ],
+    },
+    "important_notes": [
+        {"text": "投标文件正本封面必须加盖单位公章和法定代表人签字或盖章，缺一不可", "task_type": "stamp", "priority": "urgent"},
+        {"text": "投标文件须双面打印，胶装成册，不得使用活页夹或塑料封皮", "task_type": "format", "priority": "high"},
+        {"text": "投标保证金须在投标截止前48小时到账，以银行回单时间为准", "task_type": "pricing", "priority": "urgent"},
+        {"text": "项目负责人须提供近3个月社保缴纳证明及劳动合同复印件", "task_type": "certs", "priority": "high"},
+        {"text": "需提供至少2个风电或光伏互补项目的检测合同作为业绩证明", "task_type": "certs", "priority": "medium"},
+        {"text": "授权委托书须公证，公证书原件须与投标文件一并递交", "task_type": "qualifications", "priority": "high"},
+        {"text": "如需现场踏勘，须在购买招标文件后3个工作日内联系招标人预约", "task_type": "get_docs", "priority": "medium"},
+        {"text": "开标一览表须单独用小信封密封，与投标文件一同递交", "task_type": "format", "priority": "high"},
+    ],
+}
+
+# 预设解析目标标讯
+_TENDER_ANALYSIS_TARGET = "DEMO-ACTIVE-006"
+
+
+async def _seed_tender_analysis(db, notice_map: dict):
+    """为指定标讯预置招标文件解析结果（演示用）"""
+    ext_id = _TENDER_ANALYSIS_TARGET
+    if ext_id not in notice_map:
+        print(f"[seed_demo] 标讯 {ext_id} 不存在，跳过招标文件解析预设")
+        return
+    notice_id = notice_map[ext_id]
+
+    # 检查是否已有解析数据
+    from sqlalchemy import select as _select
+    notice = (await db.execute(_select(BidNotice).where(BidNotice.id == notice_id))).scalar_one_or_none()
+    if notice and notice.tender_analysis:
+        print("[seed_demo] 招标文件解析数据已存在，跳过")
+        return
+
+    import copy
+    analysis = copy.deepcopy(DEMO_TENDER_ANALYSIS)
+    analysis["parsed_at"] = _dt(-10).isoformat()
+
+    notice.tender_analysis = analysis
+    await db.flush()
+    print(f"[seed_demo] 已为 {ext_id} 预置招标文件解析结果")
+
+
 def _print_summary():
     print("""
     +======================================+
@@ -1243,5 +1401,6 @@ def _print_summary():
     |  历史结果: 18条(仪表盘图表用)        |
     |  倒排任务: 多条(看板三列)            |
     |  报名记录: 已创建                    |
+    |  招标文件解析: 已预置(006号标讯)     |
     +======================================+
     """)
