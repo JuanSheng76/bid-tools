@@ -1,4 +1,5 @@
 """FastAPI 主入口"""
+import os
 import uuid
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -7,7 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from database import init_db, async_session
 from sqlalchemy import select
-from models import BidSource
+from models import BidSource, User
+from config import DEMO_MODE, DISABLE_SCHEDULER
 
 from auth import router as auth_router
 from routers import dashboard, notices, company, tasks, results, sources, registrations, calendar, tender
@@ -32,27 +34,52 @@ async def scheduled_scrape_all():
                 print(f"[Scheduler] {src.name} 爬取失败: {e}")
 
 
+async def _seed_demo_if_needed(app: FastAPI):
+    """演示模式或无用户时自动填充演示数据"""
+    async with async_session() as db:
+        result = await db.execute(select(User).limit(1))
+        has_users = result.scalar_one_or_none() is not None
+
+    if DEMO_MODE or not has_users:
+        print("[Demo] 正在填充演示数据...")
+        import asyncio
+        from seed_demo import seed_demo
+        await seed_demo()
+        print("[Demo] 演示数据填充完成")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
 
-    # 启动定时爬取调度器
-    from apscheduler.schedulers.asyncio import AsyncIOScheduler
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        scheduled_scrape_all,
-        "interval",
-        minutes=30,
-        id="scrape_all",
-        next_run_time=None,  # 启动后不立即执行
-    )
-    scheduler.start()
-    print("[Scheduler] 定时爬取已启动（每30分钟）")
+    # 设置演示模式标记
+    app.state.demo_mode = DEMO_MODE
+
+    # 填充演示数据
+    await _seed_demo_if_needed(app)
+
+    # 定时爬取调度器（云环境可禁用）
+    if not DISABLE_SCHEDULER:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(
+            scheduled_scrape_all,
+            "interval",
+            minutes=30,
+            id="scrape_all",
+            next_run_time=None,  # 启动后不立即执行
+        )
+        scheduler.start()
+        print("[Scheduler] 定时爬取已启动（每30分钟）")
+    else:
+        scheduler = None
+        print("[Scheduler] 定时爬取已禁用（DISABLE_SCHEDULER=1）")
 
     yield
 
-    scheduler.shutdown(wait=False)
-    print("[Scheduler] 已停止")
+    if scheduler:
+        scheduler.shutdown(wait=False)
+        print("[Scheduler] 已停止")
 
 
 app = FastAPI(title="标策台", version="0.1.0", lifespan=lifespan)
@@ -82,4 +109,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run("main:app", host=host, port=port, reload=True)

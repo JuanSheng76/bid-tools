@@ -4,16 +4,20 @@ from fastapi.templating import Jinja2Templates
 
 
 class TemplatesWithNow(Jinja2Templates):
-    """自动注入 now 变量到所有模板上下文，兼容 Starlette 1.x API"""
+    """自动注入 now 和 demo_mode 变量到所有模板上下文，兼容 Starlette 1.x API"""
 
     def TemplateResponse(self, name: str, context: dict = None, **kwargs):
         if context is None:
             context = {}
         context.setdefault("now", datetime.utcnow())
 
+        # 注入 demo_mode（从 app.state 读取）
+        request = context.get("request")
+        if request and hasattr(request.app.state, "demo_mode"):
+            context.setdefault("demo_mode", request.app.state.demo_mode)
+
         # Starlette >= 1.0: TemplateResponse(request, name, context, ...)
         #   request 始终在 context 中，提取出来传给父类
-        request = context.get("request")
         return super().TemplateResponse(request, name, context, **kwargs)
 
 

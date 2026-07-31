@@ -45,6 +45,12 @@
                 <p>登录你的投标工作台，继续推进项目。</p>
             </div>
             <form class="auth-form" hx-post="/auth/login" hx-target="#login-error" hx-swap="innerHTML">
+                {% if demo_mode %}
+                <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:12px;text-align:center;font-size:13px;color:#92400e">
+                    <strong>演示账号：</strong>demo / demo123
+                    <button type="button" onclick="document.getElementById('login-username').value='demo';document.getElementById('login-password').value='demo123';this.closest('form').querySelector('.auth-submit').click()" style="margin-left:10px;padding:4px 14px;background:#f59e0b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">一键体验 →</button>
+                </div>
+                {% endif %}
                 <div class="form-group">
                     <label for="login-username">用户名</label>
                     <input id="login-username" type="text" name="username" autocomplete="username" placeholder="请输入用户名" required autofocus>

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: bid-tools-demo
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: DEMO_MODE
+        value: "1"
+      - key: DISABLE_SCHEDULER
+        value: "1"
